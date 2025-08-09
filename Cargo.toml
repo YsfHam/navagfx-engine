@@ -1,0 +1,11 @@
+[package]
+name = "navagfx-engine"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+winit = "0.30.12"
+wgpu = "26.0.1"
+log = "0.4"
+smol = "2.0.2"
+bytemuck = "1.23.2"
