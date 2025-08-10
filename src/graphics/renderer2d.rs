@@ -1,6 +1,6 @@
 use wgpu::{include_wgsl, util::DeviceExt};
 
-use crate::graphics::GraphicsContext;
+use crate::graphics::{camera::{Camera2D, CameraUniform}, shapes::Quad, GraphicsContext};
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Zeroable, bytemuck::Pod)]
@@ -22,11 +22,33 @@ impl Vertex {
     }
 }
 
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Zeroable, bytemuck::Pod)]
+struct QuadInstanceData {
+    model: glam::Mat4,
+    color: [f32; 4]
+}
+
+impl QuadInstanceData {
+
+    const ATTRIBS: [wgpu::VertexAttribute; 5] =
+        wgpu::vertex_attr_array![1 => Float32x4, 2 => Float32x4, 3 => Float32x4, 4 => Float32x4, 5 => Float32x4];
+
+    fn desc() -> wgpu::VertexBufferLayout<'static> {
+        wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<Self>() as wgpu::BufferAddress,
+            step_mode: wgpu::VertexStepMode::Instance,
+            attributes: &Self::ATTRIBS,
+        }
+    }
+}
+
 const QUAD: &[Vertex] = &[
-    Vertex { position: [-0.5, -0.5] },
-    Vertex { position: [0.5, -0.5] },
-    Vertex { position: [0.5, 0.5] },
-    Vertex { position: [-0.5, 0.5] },
+    Vertex { position: [0.0, 0.0] },
+    Vertex { position: [0.0, 1.0] },
+    Vertex { position: [1.0, 1.0] },
+    Vertex { position: [1.0, 0.0] },
 ];
 
 const QUAD_INDICES: &[u16] = &[
@@ -41,17 +63,47 @@ pub struct Renderer2D {
 
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
+
+    camera_uniform: Option<CameraUniform>,
+    camera_buffer: wgpu::Buffer,
+    camera_bind_group_layout: wgpu::BindGroupLayout,
+
+    quad_instances: Vec<QuadInstanceData>,
 }
 
 
 impl Renderer2D {
+
+    const MAX_QUAD: usize = 1_000_00;
+
     pub fn new(context: &GraphicsContext) -> Self {
         let shader = context.device
                 .create_shader_module(include_wgsl!("../../assets/shaders/shader_quad.wgsl"));
 
+
+        
+        let camera_bind_group_layout = context.device
+                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                    label: Some("Renderer2D bind group layout"),
+                    entries: &[
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 0,
+                            visibility: wgpu::ShaderStages::VERTEX,
+                            ty: wgpu::BindingType::Buffer {
+                                ty: wgpu::BufferBindingType::Uniform,
+                                has_dynamic_offset: false,
+                                min_binding_size: None,
+                            },
+                            count: None,
+                        }
+                    ],
+                });
+
         let render_pipeline_layout = context.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Renderer2D pipeline layout"),
-            bind_group_layouts: &[],
+            bind_group_layouts: &[
+                &camera_bind_group_layout
+            ],
             push_constant_ranges: &[],
         });
 
@@ -64,7 +116,8 @@ impl Renderer2D {
                 entry_point: Some("vs_main"),
                 compilation_options: Default::default(),
                 buffers: &[
-                    Vertex::desc()
+                    Vertex::desc(),
+                    QuadInstanceData::desc()
                 ],
             },
             primitive: wgpu::PrimitiveState {
@@ -96,16 +149,42 @@ impl Renderer2D {
             })
         });
 
+
+        let camera_buffer = context.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Renderer2D camera buffer"),
+            size: std::mem::size_of::<CameraUniform>() as wgpu::BufferAddress,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
         Self {
             render_pipeline,
             clear_color: wgpu::Color {r: 0.1, g: 0.1, b: 0.2, a: 1.0},
             vertex_buffer: Self::create_vertex_buffer(context),
-            index_buffer: Self::create_index_buffer(context)
+            index_buffer: Self::create_index_buffer(context),
+
+            camera_buffer,
+            camera_uniform: None,
+            camera_bind_group_layout,
+
+            quad_instances: Vec::with_capacity(Self::MAX_QUAD),
         }
     }
 
-    pub fn begin(&mut self, clear_color: wgpu::Color) {
+    pub fn begin(&mut self, clear_color: wgpu::Color, camera: &Camera2D) {
+
         self.clear_color = clear_color;
+
+        self.camera_uniform = Some(CameraUniform::from_matrix(camera.to_matrix()));
+
+        self.quad_instances.clear();
+    }
+
+    pub fn draw_quad(&mut self, quad: &Quad) {
+        self.quad_instances.push(QuadInstanceData { 
+            model: quad.get_transform(),
+            color: quad.color.into()
+        });
     }
 
     pub fn submit(&self, context: &GraphicsContext) -> Result<(), wgpu::SurfaceError> {
@@ -117,7 +196,7 @@ impl Renderer2D {
         });
 
 
-        self.start_render_pass(&mut encoder, &view);
+        self.start_render_pass(context, &mut encoder, &view);
 
         context.queue.submit(std::iter::once(encoder.finish()));
         output.present();
@@ -125,7 +204,7 @@ impl Renderer2D {
     }
 
 
-    fn start_render_pass(&self, encoder: &mut wgpu::CommandEncoder, view: &wgpu::TextureView) {
+    fn start_render_pass(&self, context: &GraphicsContext, encoder: &mut wgpu::CommandEncoder, view: &wgpu::TextureView) {
 
         let mut render_pass= encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("Renderer2D color render pass"),
@@ -147,11 +226,42 @@ impl Renderer2D {
 
 
         render_pass.set_pipeline(&self.render_pipeline);
+
+        render_pass.set_bind_group(0, &self.create_camera_bind_group(context), &[]);
         
         render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+        
         render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
 
-        render_pass.draw_indexed(0..QUAD_INDICES.len() as _, 0, 0..1);
+        render_pass.set_vertex_buffer(1, self.create_quad_instance_buffer(context).slice(..));
+        render_pass.draw_indexed(0..QUAD_INDICES.len() as _, 0, 0..self.quad_instances.len() as _);
+
+    }
+
+    fn create_camera_bind_group(&self, context: &GraphicsContext) -> wgpu::BindGroup {
+
+        context.queue.write_buffer(
+            &self.camera_buffer, 0, 
+            bytemuck::cast_slice(&[self.camera_uniform.unwrap()]));
+
+        context.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Renderer2D camera bind group"),
+            layout: &self.camera_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: self.camera_buffer.as_entire_binding(),
+                }
+            ],
+        })
+    }
+
+    fn create_quad_instance_buffer(&self, context: &GraphicsContext) -> wgpu::Buffer {
+        context.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: None,
+            contents: bytemuck::cast_slice(&self.quad_instances),
+            usage: wgpu::BufferUsages::VERTEX,
+        })
     }
 
 

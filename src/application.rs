@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Instant};
 
 use winit::{event::WindowEvent, event_loop::{ActiveEventLoop, EventLoop}, window::{Window, WindowAttributes}};
 
@@ -7,7 +7,7 @@ use crate::{application::event::{ApplicationEvent, ApplicationSignal}, graphics:
 pub mod event;
 
 pub trait ApplicationHandler {
-    fn init(&mut self, context: &GraphicsContext);
+    fn init(context: &GraphicsContext) -> Self;
     fn update(&mut self) -> ApplicationSignal;
     fn draw(&mut self, context: &GraphicsContext);
     fn handle_event(&mut self, event: ApplicationEvent) -> ApplicationSignal;
@@ -15,15 +15,17 @@ pub trait ApplicationHandler {
 
 
 pub struct Application<Handler: ApplicationHandler> {
-    handler: Handler,
+    handler: Option<Handler>,
     data: Option<AppData>,
+    timer: Instant,
 }
 
 impl<Handler: ApplicationHandler> Application<Handler> {
-    pub fn new(handler: Handler) -> Self {
+    pub fn new() -> Self {
         Self {
-            handler,
+            handler: None,
             data: None,
+            timer: Instant::now(),
         }
     }
 
@@ -54,9 +56,11 @@ impl<Handler: ApplicationHandler> winit::application::ApplicationHandler<AppData
         let window = event_loop.create_window(WindowAttributes::default()).unwrap();
         let data = smol::block_on(AppData::new(window));
 
-        self.handler.init(&data.context);
+        self.handler = Some(Handler::init(&data.context));
 
         self.data = Some(data);
+
+        self.timer = Instant::now();
     }
 
     fn window_event(
@@ -66,22 +70,22 @@ impl<Handler: ApplicationHandler> winit::application::ApplicationHandler<AppData
         event: winit::event::WindowEvent,
     ) {
 
-        let data = match &mut self.data {
-            Some(data) => data,
-            None => {
-                log::debug!("App data is none");
-                return;
-            },
-        };
+        let data = self.data.as_mut().unwrap();
+        let handler = self.handler.as_mut().unwrap();
+
+        let elapsed = self.timer.elapsed();
+        self.timer = Instant::now();
+        
+        log::info!("FPS {}", 1.0 / elapsed.as_secs_f64());
 
         
         let signal = match event {
             WindowEvent::CloseRequested => {event_loop.exit(); None}
             WindowEvent::RedrawRequested => {
 
-                let signal = self.handler.update();
+                let signal = handler.update();
 
-                self.handler.draw(&data.context);
+                handler.draw(&data.context);
 
                 data.window.request_redraw();
 
@@ -91,11 +95,11 @@ impl<Handler: ApplicationHandler> winit::application::ApplicationHandler<AppData
             WindowEvent::Resized(size) => {
                 data.context.resize_surface(size.width, size.height);
 
-                Some(self.handler.handle_event(ApplicationEvent::Resized { width: size.width, height: size.height }))
+                Some(handler.handle_event(ApplicationEvent::Resized { width: size.width, height: size.height }))
             }
 
             ev => if let Some(app_event) = ApplicationEvent::from_window_event(ev) {
-                Some(self.handler.handle_event(app_event))
+                Some(handler.handle_event(app_event))
             }
             else {
                 None

@@ -1,5 +1,6 @@
 pub mod renderer2d;
-
+pub mod camera;
+pub mod shapes;
 
 use wgpu::SurfaceTarget;
 

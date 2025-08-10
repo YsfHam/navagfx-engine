@@ -1,6 +1,4 @@
-use winit::{event::{ElementState, KeyEvent, WindowEvent}, keyboard::{Key, PhysicalKey}};
-
-pub use winit::keyboard::KeyCode;
+use winit::{event::{ElementState, KeyEvent, WindowEvent}, keyboard::{Key, KeyCode, PhysicalKey}};
 
 
 #[derive(Debug)]

@@ -9,3 +9,5 @@ wgpu = "26.0.1"
 log = "0.4"
 smol = "2.0.2"
 bytemuck = "1.23.2"
+#cgmath = "0.18.0"
+glam = { version = "0.30.5", features = ["bytemuck"]}

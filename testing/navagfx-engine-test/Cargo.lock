@@ -669,6 +669,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "glam"
+version = "0.30.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f2d1aab06663bdce00d6ca5e5ed586ec8d18033a771906c993a1e3755b368d85"
+dependencies = [
+ "bytemuck",
+]
+
+[[package]]
 name = "glow"
 version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -990,6 +999,7 @@ name = "navagfx-engine"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "glam",
  "log",
  "smol",
  "wgpu",
