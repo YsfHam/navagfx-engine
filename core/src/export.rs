@@ -1,5 +1,6 @@
 pub mod graphics_export {
     pub use wgpu::Color;
+    pub use wgpu::SurfaceError;
 }
 
 pub mod application_export {

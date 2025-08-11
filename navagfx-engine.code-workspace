@@ -1,10 +1,10 @@
 {
 	"folders": [
 		{
-			"path": "."
+			"path": "core"
 		},
 		{
-			"path": "testing/navagfx-engine-test"
+			"path": "examples/navagfx-engine-test"
 		}
 	],
 	"settings": {}

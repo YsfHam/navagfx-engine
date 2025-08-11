@@ -2,7 +2,7 @@ use std::{cell::{Cell, RefCell}, collections::HashMap};
 
 use wgpu::{include_wgsl, util::DeviceExt};
 
-use crate::{assets::{texture::Texture2D, AssetHandle, AssetsManagerRef}, graphics::{camera::{Camera2D, CameraUniform}, shapes::Quad, GraphicsContext}};
+use crate::{assets::{texture::{Texture2D, Texture2DCoordinates}, AssetHandle, AssetsManagerRef}, graphics::{camera::{Camera2D, CameraUniform}, shapes::Quad, GraphicsContext}};
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Zeroable, bytemuck::Pod)]
@@ -91,16 +91,16 @@ impl QuadsInstanceDataBuffer {
             return;
         }
 
-        if self.instance_buffer.borrow().is_none() || self.buffer_len.get() < self.quads.len() {
-            log::info!("Reallocating the instance buffer");
-            let instance_buffer = context.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: None,
-                contents: bytemuck::cast_slice(&self.quads),
-                usage: wgpu::BufferUsages::VERTEX,
-            });
-
-            self.instance_buffer.replace(Some(instance_buffer));
-            self.buffer_len.set(self.quads.len());
+        if self.instance_buffer.borrow().is_none() {
+            self.reallocate_instance_buffer(context);
+        }
+        else if self.buffer_len.get() < self.quads.len() {
+            log::info!("Destroying instance buffer");
+            self.instance_buffer.borrow().as_ref().unwrap().destroy();
+            self.reallocate_instance_buffer(context);
+        }
+        else {
+            context.queue.write_buffer(self.instance_buffer.borrow().as_ref().unwrap(), 0, bytemuck::cast_slice(&self.quads));
         }
 
         let instance_buffer = self.instance_buffer.borrow();
@@ -109,18 +109,17 @@ impl QuadsInstanceDataBuffer {
         render_pass.set_vertex_buffer(1, instance_buffer.as_ref().unwrap().slice(0..(self.quads.len() * std::mem::size_of::<QuadInstanceData>()) as _));
         render_pass.draw_indexed(0..QUAD_INDICES.len() as _, 0, 0..self.quads.len() as _);
     }
-}
 
+    fn reallocate_instance_buffer(&self, context: &GraphicsContext) {
+        log::info!("Reallocating the instance buffer");
+        let instance_buffer = context.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: None,
+                contents: bytemuck::cast_slice(&self.quads),
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+        });
 
-#[derive(Copy, Clone)]
-pub struct AtlasTextureCoordinates {
-    pub tex_coords_size: [f32; 2],
-    pub tex_coords_offset: [f32; 2],
-}
-
-impl Default for AtlasTextureCoordinates {
-    fn default() -> Self {
-        Self { tex_coords_size: [1.0, 1.0], tex_coords_offset: [0.0, 0.0] }
+        self.instance_buffer.replace(Some(instance_buffer));
+        self.buffer_len.set(self.quads.len());
     }
 }
 
@@ -261,7 +260,7 @@ impl Renderer2D {
         self.draw_quad_textured(quad, self.white_texture, Default::default());
     }
 
-    pub fn draw_quad_textured(&mut self, quad: &Quad, texture_handle: AssetHandle<Texture2D>, atlas_coords: AtlasTextureCoordinates) {
+    pub fn draw_quad_textured(&mut self, quad: &Quad, texture_handle: AssetHandle<Texture2D>, atlas_coords: Texture2DCoordinates) {
         let quads = 
                 self
                 .quads_instances
@@ -272,8 +271,8 @@ impl Renderer2D {
         quads.push(QuadInstanceData {
             model: quad.get_transform(),
             color: quad.color.into(),
-            tex_coords_offset: atlas_coords.tex_coords_offset,
-            tex_coords_size: atlas_coords.tex_coords_size
+            tex_coords_offset: atlas_coords.offset,
+            tex_coords_size: atlas_coords.size
         });
     }
 

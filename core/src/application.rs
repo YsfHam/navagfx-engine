@@ -8,9 +8,9 @@ pub mod event;
 
 pub trait ApplicationHandler {
     fn init(context: &GraphicsContext, assets_manager: AssetsManagerRef) -> Self;
-    fn update(&mut self) -> ApplicationSignal;
-    fn draw(&mut self, context: &GraphicsContext);
-    fn handle_event(&mut self, event: ApplicationEvent) -> ApplicationSignal;
+    fn update(&mut self, dt: f32) -> ApplicationSignal;
+    fn draw(&mut self, context: &GraphicsContext) -> Result<(), wgpu::SurfaceError>;
+    fn handle_event(&mut self, event: ApplicationEvent, dt: f32) -> ApplicationSignal;
 }
 
 
@@ -75,18 +75,24 @@ impl<Handler: ApplicationHandler> winit::application::ApplicationHandler<AppData
         let handler = self.handler.as_mut().unwrap();
 
         let elapsed = self.timer.elapsed();
+        let elapsed_as_secs = elapsed.as_secs_f32();
         self.timer = Instant::now();
-        
-        //log::info!("FPS {}", 1.0 / elapsed.as_secs_f64());
 
         
         let signal = match event {
             WindowEvent::CloseRequested => {event_loop.exit(); None}
             WindowEvent::RedrawRequested => {
 
-                let signal = handler.update();
+                let signal = handler.update(elapsed_as_secs);
 
-                handler.draw(&data.context);
+                match handler.draw(&data.context) {
+                    Ok(()) => (),
+                    Err(wgpu::SurfaceError::Outdated | wgpu::SurfaceError::Lost) => {
+                        data.context.resize_surface(data.context.config.width, data.context.config.height);
+                    }
+
+                    Err(e) => log::error!("Error while drawing to surface {e:?}"),
+                }
 
                 data.window.request_redraw();
 
@@ -96,11 +102,11 @@ impl<Handler: ApplicationHandler> winit::application::ApplicationHandler<AppData
             WindowEvent::Resized(size) => {
                 data.context.resize_surface(size.width, size.height);
 
-                Some(handler.handle_event(ApplicationEvent::Resized { width: size.width, height: size.height }))
+                Some(handler.handle_event(ApplicationEvent::Resized { width: size.width, height: size.height }, elapsed_as_secs))
             }
 
             ev => if let Some(app_event) = ApplicationEvent::from_window_event(ev) {
-                Some(handler.handle_event(app_event))
+                Some(handler.handle_event(app_event, elapsed_as_secs))
             }
             else {
                 None

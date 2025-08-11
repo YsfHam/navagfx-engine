@@ -2,6 +2,80 @@ use image::RgbaImage;
 
 use crate::{assets::Asset, graphics::GraphicsContext};
 
+
+#[derive(Copy, Clone)]
+pub struct Texture2DCoordinates {
+    pub size: [f32; 2],
+    pub offset: [f32; 2],
+}
+
+impl Texture2DCoordinates {
+    pub fn new(top: f32, left: f32, bottom: f32, right: f32) -> Self {
+        Self {
+            size: [right, bottom],
+            offset: [left, top]
+        }
+    }
+}
+
+impl Default for Texture2DCoordinates {
+    fn default() -> Self {
+        Self { size: [1.0, 1.0], offset: [0.0, 0.0] }
+    }
+}
+
+pub struct SpriteSheetCoordinates {
+    coords: Vec<Texture2DCoordinates>,
+    cols: usize,
+}
+
+impl SpriteSheetCoordinates {
+    pub fn new(texture: &Texture2D, sprite_size: (u32, u32)) -> Self {
+        let (sprite_width, sprite_height) = sprite_size;
+
+        let size = [
+            sprite_width as f32 / texture.width as f32,
+            sprite_height as f32 / texture.height as f32,
+        ];
+
+        let mut atlas_coords = vec![];
+
+        let rows = texture.height / sprite_height;
+        let cols = texture.width / sprite_width;
+
+        for y in 0..rows {
+            for x in 0..cols {
+                let offset = [
+                    (x * sprite_width) as f32 / texture.width as f32,
+                    (y * sprite_height) as f32 / texture.height as f32
+                ];
+
+                atlas_coords.push(Texture2DCoordinates {
+                    size, offset
+                });
+
+            }
+        }
+
+        Self {
+            coords: atlas_coords,
+            cols: cols as usize
+        }
+    }
+
+    pub fn get_coords(&self, x: usize, y: usize) -> Option<Texture2DCoordinates> {
+        self.get_coords_by_index(y * self.cols + x)
+    }
+
+    pub fn get_coords_by_index(&self, index: usize) -> Option<Texture2DCoordinates> {
+        self.coords.get(index).copied()
+    }
+    
+    pub fn len(&self) -> usize {
+        self.coords.len()
+    }
+}
+
 pub struct Texture2D {
     pub texture: wgpu::Texture,
     pub view: wgpu::TextureView,
