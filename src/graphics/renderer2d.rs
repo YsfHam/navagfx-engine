@@ -30,13 +30,15 @@ impl Vertex {
 #[derive(Copy, Clone, Debug, bytemuck::Zeroable, bytemuck::Pod)]
 struct QuadInstanceData {
     model: glam::Mat4,
-    color: [f32; 4]
+    color: [f32; 4],
+    tex_coords_size: [f32; 2],
+    tex_coords_offset: [f32; 2],
 }
 
 impl QuadInstanceData {
 
-    const ATTRIBS: [wgpu::VertexAttribute; 5] =
-        wgpu::vertex_attr_array![2 => Float32x4, 3 => Float32x4, 4 => Float32x4, 5 => Float32x4, 6 => Float32x4];
+    const ATTRIBS: [wgpu::VertexAttribute; 7] =
+        wgpu::vertex_attr_array![2 => Float32x4, 3 => Float32x4, 4 => Float32x4, 5 => Float32x4, 6 => Float32x4, 7 => Float32x2, 8 => Float32x2];
 
     fn desc() -> wgpu::VertexBufferLayout<'static> {
         wgpu::VertexBufferLayout {
@@ -94,6 +96,19 @@ impl QuadsInstanceDataBuffer {
 
         render_pass.set_vertex_buffer(1, instance_buffer.slice(..));
         render_pass.draw_indexed(0..QUAD_INDICES.len() as _, 0, 0..self.quads.len() as _);
+    }
+}
+
+
+#[derive(Copy, Clone)]
+pub struct AtlasTextureCoordinates {
+    pub tex_coords_size: [f32; 2],
+    pub tex_coords_offset: [f32; 2],
+}
+
+impl Default for AtlasTextureCoordinates {
+    fn default() -> Self {
+        Self { tex_coords_size: [1.0, 1.0], tex_coords_offset: [0.0, 0.0] }
     }
 }
 
@@ -177,7 +192,6 @@ impl Renderer2D {
             push_constant_ranges: &[],
         });
 
-
         let render_pipeline = context.device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("Render2D pipeline"),
             layout: Some(&render_pipeline_layout),
@@ -213,7 +227,7 @@ impl Renderer2D {
                 compilation_options: Default::default(),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: context.config.format,
-                    blend: Some(wgpu::BlendState::REPLACE),
+                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
             })
@@ -260,10 +274,10 @@ impl Renderer2D {
     }
 
     pub fn draw_quad(&mut self, quad: &Quad) {
-        self.draw_quad_textured(quad, self.white_texture);
+        self.draw_quad_textured(quad, self.white_texture, Default::default());
     }
 
-    pub fn draw_quad_textured(&mut self, quad: &Quad, texture_handle: AssetHandle<Texture2D>) {
+    pub fn draw_quad_textured(&mut self, quad: &Quad, texture_handle: AssetHandle<Texture2D>, atlas_coords: AtlasTextureCoordinates) {
         let quads = 
                 self
                 .quads_instances
@@ -274,6 +288,8 @@ impl Renderer2D {
         quads.push(QuadInstanceData {
             model: quad.get_transform(),
             color: quad.color.into(),
+            tex_coords_offset: atlas_coords.tex_coords_offset,
+            tex_coords_size: atlas_coords.tex_coords_size
         });
     }
 

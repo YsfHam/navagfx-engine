@@ -20,6 +20,9 @@ struct QuadInstanceDataInput {
     @location(5) model_matrix_3: vec4<f32>,
 
     @location(6) color: vec4<f32>,
+
+    @location(7) tex_coords_size: vec2<f32>,
+    @location(8) tex_coords_offset: vec2<f32>,
 }
 
 struct VertexOutput {
@@ -45,7 +48,7 @@ fn vs_main(
     out.clip_position = camera.view_proj * model_matrix * vec4<f32>(model.position, 0.0, 1.0);
 
     out.color = instance.color;
-    out.tex_coords = model.tex_coords;
+    out.tex_coords = model.tex_coords * instance.tex_coords_size + instance.tex_coords_offset;
     return out;
 }
 

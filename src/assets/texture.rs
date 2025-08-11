@@ -6,6 +6,8 @@ pub struct Texture2D {
     pub texture: wgpu::Texture,
     pub view: wgpu::TextureView,
     pub sampler: wgpu::Sampler,
+    pub width: u32,
+    pub height: u32,
 }
 
 impl Asset for Texture2D {}
@@ -77,6 +79,8 @@ impl Texture2D {
             texture,
             view,
             sampler,
+            width: texture_width,
+            height: texture_height
         }
 
     }
