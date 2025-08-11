@@ -1,6 +1,6 @@
 use std::{sync::{Arc, Mutex}, time::Duration};
 
-use navagfx_engine::{application::{event::{ApplicationEvent, ApplicationSignal, KeyInfo}, Application, ApplicationHandler}, assets::{texture::{SpriteSheetCoordinates, Texture2D, Texture2DCoordinates}, AssetHandle, AssetsManager}, export::{application_export::KeyCode, glam, graphics_export::{Color, SurfaceError}, image}, graphics::{camera::Camera2D, renderer2d::Renderer2D, shapes::Quad, GraphicsContext}};
+use navagfx_engine::{application::{event::{ApplicationEvent, ApplicationSignal, KeyInfo}, Application, ApplicationHandler}, assets::{texture::{SpriteSheetCoordinates, Texture2D, Texture2DCoordinates}, AssetHandle, AssetsManager}, export::{application_export::KeyCode, glam, graphics_export::{Color, SurfaceError}, image}, graphics::{camera::Camera2D, renderer2d::Renderer2D, shapes::Quad, GraphicsContext}, Timer};
 
 
 fn load_static_texture(context: &GraphicsContext, path: &str) -> Texture2D {
@@ -14,7 +14,7 @@ struct Animation {
     frames_index_iter: std::iter::Cycle<std::ops::Range<usize>>,
     current_frame: usize,
     frame_time: Duration,
-    frame_timer: Option<std::time::Instant>,
+    frame_timer: Timer,
 }
 
 impl Animation {
@@ -25,16 +25,15 @@ impl Animation {
             frames_index_iter: (0..atlases_count).cycle(),
             current_frame: 0,
             frame_time,
-            frame_timer: None,
+            frame_timer: Timer::new(),
         }
     }
 
     fn get_frame_coords(&mut self) -> Texture2DCoordinates {
-        let timer = self.frame_timer.get_or_insert_with(|| std::time::Instant::now());
 
-        if timer.elapsed() > self.frame_time {
+        if self.frame_timer.elapsed() > self.frame_time {
             self.current_frame = self.frames_index_iter.next().unwrap();
-            *timer = std::time::Instant::now(); 
+            self.frame_timer.restart();
         }
 
         self.atlas_tex.get_coords_by_index(self.current_frame).unwrap()

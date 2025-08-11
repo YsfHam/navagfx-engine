@@ -1,8 +1,8 @@
-use std::{sync::{Arc, Mutex}, time::Instant};
+use std::sync::{Arc, Mutex};
 
 use winit::{event::WindowEvent, event_loop::{ActiveEventLoop, EventLoop}, window::{Window, WindowAttributes}};
 
-use crate::{application::event::{ApplicationEvent, ApplicationSignal}, assets::{texture::Texture2D, AssetsManager, AssetsManagerRef}, graphics::GraphicsContext};
+use crate::{application::event::{ApplicationEvent, ApplicationSignal}, assets::{texture::Texture2D, AssetsManager, AssetsManagerRef}, graphics::GraphicsContext, Timer};
 
 pub mod event;
 
@@ -17,7 +17,7 @@ pub trait ApplicationHandler {
 pub struct Application<Handler: ApplicationHandler> {
     handler: Option<Handler>,
     data: Option<AppData>,
-    timer: Instant,
+    timer: Timer,
 }
 
 impl<Handler: ApplicationHandler> Application<Handler> {
@@ -26,7 +26,7 @@ impl<Handler: ApplicationHandler> Application<Handler> {
         Self {
             handler: None,
             data: None,
-            timer: Instant::now(),
+            timer: Timer::new(),
         }
     }
 
@@ -61,7 +61,7 @@ impl<Handler: ApplicationHandler> winit::application::ApplicationHandler<AppData
 
         self.data = Some(data);
 
-        self.timer = Instant::now();
+        self.timer.restart();
     }
 
     fn window_event(
@@ -74,9 +74,8 @@ impl<Handler: ApplicationHandler> winit::application::ApplicationHandler<AppData
         let data = self.data.as_mut().unwrap();
         let handler = self.handler.as_mut().unwrap();
 
-        let elapsed = self.timer.elapsed();
+        let elapsed = self.timer.restart();
         let elapsed_as_secs = elapsed.as_secs_f32();
-        self.timer = Instant::now();
 
         
         let signal = match event {
