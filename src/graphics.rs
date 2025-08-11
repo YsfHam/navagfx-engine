@@ -42,7 +42,7 @@ impl<'a> GraphicsContext<'a> {
 
         let (device, queue) = adapter.request_device(&wgpu::DeviceDescriptor {
             label: Some("Graphics context device"),
-            required_features: wgpu::Features::empty(),
+            required_features: wgpu::Features::TEXTURE_BINDING_ARRAY,
             required_limits: wgpu::Limits::defaults(),
             memory_hints: Default::default(),
             trace: wgpu::Trace::Off,

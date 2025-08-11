@@ -1,51 +1,62 @@
+use std::cell::Cell;
+
 
 pub struct Quad {
-    pub position: glam::Vec2,
-    pub size: glam::Vec2,
-    pub rotation: glam::Quat,
+    position: glam::Vec2,
+    size: glam::Vec2,
+    rotation: f32,
     pub color: glam::Vec4,
 
-    transform: glam::Mat4,
+    transform: Cell<glam::Mat4>,
+    transform_needs_update: bool,
 }
 
 
 impl Quad {
 
-    pub fn new(position: glam::Vec2, size: glam::Vec2, rotation_deg: f32) -> Self {
-        let rotation = glam::Quat::from_rotation_z(rotation_deg.to_radians());
+    pub fn new(position: glam::Vec2, size: glam::Vec2, rotation: f32) -> Self {
         let transform = Self::compute_transform(position, size, rotation);
 
         Self {
             position,
             size,
             rotation,
-            transform,
-            color: glam::vec4(1.0, 1.0, 1.0, 1.0)
+            transform: Cell::new(transform),
+            color: glam::vec4(1.0, 1.0, 1.0, 1.0),
+            transform_needs_update: false
         }
     }
 
-    pub fn get_transform(&self) -> glam::Mat4 {
-        self.transform
+    pub fn set_position(&mut self, position: glam::Vec2) {
+        self.position = position;
+        self.transform_needs_update = true;
     }
 
+    pub fn set_size(&mut self, size: glam::Vec2) {
+        self.size = size;
+        self.transform_needs_update = true;
+    }
 
-    fn compute_transform(position: glam::Vec2, size: glam::Vec2, rotation: glam::Quat) -> glam::Mat4 {
-        // let translation = glam::Mat4::from_translation(position.extend(0.0));
-        // let rotation_mat = glam::Mat4::from_quat(rotation);
-        // let scale = glam::Mat4::from_scale(size.extend(1.0));
+    pub fn rotate(&mut self, rotation: f32) {
+        self.rotation += rotation;
+        self.transform_needs_update = true;
+    }
 
-        // let center_pos = size * 0.5;
-        // let center_tanslation = glam::Mat4::from_translation(-center_pos.extend(0.0));
-        // let inverse_center_tanslation = glam::Mat4::from_translation(center_pos.extend(0.0));
+    pub fn get_transform(&self) -> glam::Mat4 {
+        if self.transform_needs_update {
+            self.transform.set(Self::compute_transform(self.position, self.size, self.rotation))
+        }
+        self.transform.get()
+    }
 
-        // translation * inverse_center_tanslation * rotation_mat * center_tanslation * scale
-
+    fn compute_transform(position: glam::Vec2, size: glam::Vec2, rotation: f32) -> glam::Mat4 {
+        let rotation_quat = glam::Quat::from_rotation_z(rotation.to_radians());
 
         let center = (size * 0.5).extend(0.0);
-        let rotated_center = rotation * -center;
+        let rotated_center = rotation_quat * -center;
         let final_translation = position.extend(0.0) + center + rotated_center;
 
 
-        glam::Mat4::from_scale_rotation_translation(size.extend(1.0), rotation, final_translation)
+        glam::Mat4::from_scale_rotation_translation(size.extend(1.0), rotation_quat, final_translation)
     }
 }

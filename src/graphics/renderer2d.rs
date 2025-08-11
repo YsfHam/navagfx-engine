@@ -1,17 +1,20 @@
+use std::collections::HashMap;
+
 use wgpu::{include_wgsl, util::DeviceExt};
 
-use crate::graphics::{camera::{Camera2D, CameraUniform}, shapes::Quad, GraphicsContext};
+use crate::{assets::{texture::Texture2D, AssetHandle, AssetsManagerRef}, graphics::{camera::{Camera2D, CameraUniform}, shapes::Quad, GraphicsContext}};
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Zeroable, bytemuck::Pod)]
 struct Vertex {
     position: [f32; 2],
+    tex_coords: [f32; 2],
 }
 
 impl Vertex {
 
-    const ATTRIBS: [wgpu::VertexAttribute; 1] =
-        wgpu::vertex_attr_array![0 => Float32x2];
+    const ATTRIBS: [wgpu::VertexAttribute; 2] =
+        wgpu::vertex_attr_array![0 => Float32x2, 1 => Float32x2];
 
     fn desc() -> wgpu::VertexBufferLayout<'static> {
         wgpu::VertexBufferLayout {
@@ -33,7 +36,7 @@ struct QuadInstanceData {
 impl QuadInstanceData {
 
     const ATTRIBS: [wgpu::VertexAttribute; 5] =
-        wgpu::vertex_attr_array![1 => Float32x4, 2 => Float32x4, 3 => Float32x4, 4 => Float32x4, 5 => Float32x4];
+        wgpu::vertex_attr_array![2 => Float32x4, 3 => Float32x4, 4 => Float32x4, 5 => Float32x4, 6 => Float32x4];
 
     fn desc() -> wgpu::VertexBufferLayout<'static> {
         wgpu::VertexBufferLayout {
@@ -45,10 +48,10 @@ impl QuadInstanceData {
 }
 
 const QUAD: &[Vertex] = &[
-    Vertex { position: [0.0, 0.0] },
-    Vertex { position: [0.0, 1.0] },
-    Vertex { position: [1.0, 1.0] },
-    Vertex { position: [1.0, 0.0] },
+    Vertex { position: [0.0, 0.0], tex_coords: [0.0, 0.0] },
+    Vertex { position: [0.0, 1.0], tex_coords: [0.0, 1.0] },
+    Vertex { position: [1.0, 1.0], tex_coords: [1.0, 1.0] },
+    Vertex { position: [1.0, 0.0], tex_coords: [1.0, 0.0] },
 ];
 
 const QUAD_INDICES: &[u16] = &[
@@ -57,8 +60,46 @@ const QUAD_INDICES: &[u16] = &[
 ];
 
 
+struct QuadsInstanceDataBuffer {
+    quads: Vec<QuadInstanceData>,
+}
+
+impl QuadsInstanceDataBuffer {
+    fn new(quads_capacity: usize) -> Self {
+        let quads = Vec::with_capacity(quads_capacity);
+        Self {
+            quads,
+        }
+    }
+
+    fn clear(&mut self) {
+        self.quads.clear();
+    }
+
+    fn push(&mut self, quad: QuadInstanceData) {
+        self.quads.push(quad);
+    }
+
+    fn submit_to_render_pass(&self, context: &GraphicsContext, render_pass: &mut wgpu::RenderPass) {
+        if self.quads.is_empty() {
+            return;
+        }
+
+        let instance_buffer = context.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: None,
+            contents: bytemuck::cast_slice(&self.quads),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+
+
+        render_pass.set_vertex_buffer(1, instance_buffer.slice(..));
+        render_pass.draw_indexed(0..QUAD_INDICES.len() as _, 0, 0..self.quads.len() as _);
+    }
+}
+
 pub struct Renderer2D {
     render_pipeline: wgpu::RenderPipeline,
+    assets_manager: AssetsManagerRef,
     clear_color: wgpu::Color,
 
     vertex_buffer: wgpu::Buffer,
@@ -67,8 +108,11 @@ pub struct Renderer2D {
     camera_uniform: Option<CameraUniform>,
     camera_buffer: wgpu::Buffer,
     camera_bind_group_layout: wgpu::BindGroupLayout,
+    
 
-    quad_instances: Vec<QuadInstanceData>,
+    texture_bind_group_layout: wgpu::BindGroupLayout,
+    white_texture: AssetHandle<Texture2D>,
+    quads_instances: HashMap<AssetHandle<Texture2D>, QuadsInstanceDataBuffer>,
 }
 
 
@@ -76,7 +120,7 @@ impl Renderer2D {
 
     const MAX_QUAD: usize = 1_000_00;
 
-    pub fn new(context: &GraphicsContext) -> Self {
+    pub fn new(context: &GraphicsContext, assets_manager: AssetsManagerRef) -> Self {
         let shader = context.device
                 .create_shader_module(include_wgsl!("../../assets/shaders/shader_quad.wgsl"));
 
@@ -99,10 +143,36 @@ impl Renderer2D {
                     ],
                 });
 
+
+        let texture_bind_group_layout = context.device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            multisampled: false,
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        // This should match the filterable field of the
+                        // corresponding Texture entry above. 
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
+                label: Some("texture_bind_group_layout"),
+            });
+
         let render_pipeline_layout = context.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Renderer2D pipeline layout"),
             bind_group_layouts: &[
-                &camera_bind_group_layout
+                &camera_bind_group_layout,
+                &texture_bind_group_layout
             ],
             push_constant_ranges: &[],
         });
@@ -157,6 +227,12 @@ impl Renderer2D {
             mapped_at_creation: false,
         });
 
+        let mut assets_mgr_lock = assets_manager.lock().unwrap();
+        let white_texture = assets_mgr_lock.store_asset(
+            Texture2D::from_memory(context, "dymm", &[255, 255, 255, 255], 1, 1)
+        );
+        drop(assets_mgr_lock);
+
         Self {
             render_pipeline,
             clear_color: wgpu::Color {r: 0.1, g: 0.1, b: 0.2, a: 1.0},
@@ -166,8 +242,12 @@ impl Renderer2D {
             camera_buffer,
             camera_uniform: None,
             camera_bind_group_layout,
+            
+            assets_manager,
 
-            quad_instances: Vec::with_capacity(Self::MAX_QUAD),
+            quads_instances: HashMap::new(),
+            texture_bind_group_layout,
+            white_texture,
         }
     }
 
@@ -176,14 +256,24 @@ impl Renderer2D {
         self.clear_color = clear_color;
 
         self.camera_uniform = Some(CameraUniform::from_matrix(camera.to_matrix()));
-
-        self.quad_instances.clear();
+        self.quads_instances.values_mut().for_each(QuadsInstanceDataBuffer::clear);
     }
 
     pub fn draw_quad(&mut self, quad: &Quad) {
-        self.quad_instances.push(QuadInstanceData { 
+        self.draw_quad_textured(quad, self.white_texture);
+    }
+
+    pub fn draw_quad_textured(&mut self, quad: &Quad, texture_handle: AssetHandle<Texture2D>) {
+        let quads = 
+                self
+                .quads_instances
+                .entry(texture_handle)
+                .or_insert_with(|| QuadsInstanceDataBuffer::new(Self::MAX_QUAD))
+                ;
+
+        quads.push(QuadInstanceData {
             model: quad.get_transform(),
-            color: quad.color.into()
+            color: quad.color.into(),
         });
     }
 
@@ -228,16 +318,40 @@ impl Renderer2D {
         render_pass.set_pipeline(&self.render_pipeline);
 
         render_pass.set_bind_group(0, &self.create_camera_bind_group(context), &[]);
-        
         render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-        
         render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
 
-        render_pass.set_vertex_buffer(1, self.create_quad_instance_buffer(context).slice(..));
-        render_pass.draw_indexed(0..QUAD_INDICES.len() as _, 0, 0..self.quad_instances.len() as _);
+        self.render_quads(context, &mut render_pass);
 
     }
 
+    fn render_quads(&self, context: &GraphicsContext, render_pass: &mut wgpu::RenderPass) {
+        let lock = self.assets_manager.lock().unwrap(); 
+
+        for (handle, quads) in &self.quads_instances {
+
+            let texture= lock.get_asset(*handle);
+            let texture_bind_group = context.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("Quads bind group"),
+                layout: &self.texture_bind_group_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(&texture.view)
+                    },
+
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::Sampler(&texture.sampler)
+                    }
+                ],
+            });
+
+            render_pass.set_bind_group(1, &texture_bind_group, &[]);
+
+            quads.submit_to_render_pass(context, render_pass);
+        }
+    }
     fn create_camera_bind_group(&self, context: &GraphicsContext) -> wgpu::BindGroup {
 
         context.queue.write_buffer(
@@ -255,15 +369,6 @@ impl Renderer2D {
             ],
         })
     }
-
-    fn create_quad_instance_buffer(&self, context: &GraphicsContext) -> wgpu::Buffer {
-        context.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: None,
-            contents: bytemuck::cast_slice(&self.quad_instances),
-            usage: wgpu::BufferUsages::VERTEX,
-        })
-    }
-
 
     fn create_vertex_buffer(context: &GraphicsContext) -> wgpu::Buffer {
         context.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {

@@ -7,3 +7,4 @@ pub mod application_export {
 }
 
 pub use glam;
+pub use image;

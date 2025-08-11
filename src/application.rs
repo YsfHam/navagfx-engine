@@ -1,13 +1,13 @@
-use std::{sync::Arc, time::Instant};
+use std::{sync::{Arc, Mutex}, time::Instant};
 
 use winit::{event::WindowEvent, event_loop::{ActiveEventLoop, EventLoop}, window::{Window, WindowAttributes}};
 
-use crate::{application::event::{ApplicationEvent, ApplicationSignal}, graphics::GraphicsContext};
+use crate::{application::event::{ApplicationEvent, ApplicationSignal}, assets::{texture::Texture2D, AssetsManager, AssetsManagerRef}, graphics::GraphicsContext};
 
 pub mod event;
 
 pub trait ApplicationHandler {
-    fn init(context: &GraphicsContext) -> Self;
+    fn init(context: &GraphicsContext, assets_manager: AssetsManagerRef) -> Self;
     fn update(&mut self) -> ApplicationSignal;
     fn draw(&mut self, context: &GraphicsContext);
     fn handle_event(&mut self, event: ApplicationEvent) -> ApplicationSignal;
@@ -22,6 +22,7 @@ pub struct Application<Handler: ApplicationHandler> {
 
 impl<Handler: ApplicationHandler> Application<Handler> {
     pub fn new() -> Self {
+
         Self {
             handler: None,
             data: None,
@@ -31,7 +32,7 @@ impl<Handler: ApplicationHandler> Application<Handler> {
 
     pub fn run(mut self) {
         log::info!("Application is running ...");
-        
+
         let event_loop = EventLoop::with_user_event().build().unwrap();
 
         event_loop.set_control_flow(winit::event_loop::ControlFlow::Poll);
@@ -56,7 +57,7 @@ impl<Handler: ApplicationHandler> winit::application::ApplicationHandler<AppData
         let window = event_loop.create_window(WindowAttributes::default()).unwrap();
         let data = smol::block_on(AppData::new(window));
 
-        self.handler = Some(Handler::init(&data.context));
+        self.handler = Some(Handler::init(&data.context, data.assets_manager.clone()));
 
         self.data = Some(data);
 
@@ -115,6 +116,7 @@ impl<Handler: ApplicationHandler> winit::application::ApplicationHandler<AppData
 struct AppData {
     window: Arc<Window>,
     context: GraphicsContext<'static>,
+    assets_manager: AssetsManagerRef
 }
 
 impl AppData {
@@ -125,9 +127,15 @@ impl AppData {
         let size = window.inner_size();
 
         let context = GraphicsContext::new(window.clone(), size.width, size.height).await;
+
+        let assets_manager = AssetsManager::new()
+            .register_assets_type::<Texture2D>()
+            ;
+
         Self {
             window,
-            context
+            context,
+            assets_manager: Arc::new(Mutex::new(assets_manager))
         }
     }
 }
