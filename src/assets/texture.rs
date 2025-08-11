@@ -8,6 +8,8 @@ pub struct Texture2D {
     pub sampler: wgpu::Sampler,
     pub width: u32,
     pub height: u32,
+
+    pub bind_group: wgpu::BindGroup
 }
 
 impl Asset for Texture2D {}
@@ -75,13 +77,56 @@ impl Texture2D {
             ..Default::default()
         });
 
+
+        let bind_group = context.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Quads bind group"),
+            layout: &Self::create_bind_group_layout(context),
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&view)
+                },
+
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&sampler)
+                }
+            ],
+        });
+
         Self {
             texture,
             view,
             sampler,
             width: texture_width,
-            height: texture_height
+            height: texture_height,
+            bind_group
         }
+    }
 
+    pub fn create_bind_group_layout(context: &GraphicsContext) -> wgpu::BindGroupLayout {
+        context.device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        multisampled: false,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    // This should match the filterable field of the
+                    // corresponding Texture entry above. 
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+            ],
+            label: Some("texture_bind_group_layout"),
+        })
     }
 }

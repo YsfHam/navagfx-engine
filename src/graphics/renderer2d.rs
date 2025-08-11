@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{cell::{Cell, RefCell}, collections::HashMap};
 
 use wgpu::{include_wgsl, util::DeviceExt};
 
@@ -64,6 +64,8 @@ const QUAD_INDICES: &[u16] = &[
 
 struct QuadsInstanceDataBuffer {
     quads: Vec<QuadInstanceData>,
+    instance_buffer: RefCell<Option<wgpu::Buffer>>,
+    buffer_len: Cell<usize>,
 }
 
 impl QuadsInstanceDataBuffer {
@@ -71,6 +73,8 @@ impl QuadsInstanceDataBuffer {
         let quads = Vec::with_capacity(quads_capacity);
         Self {
             quads,
+            instance_buffer: RefCell::new(None),
+            buffer_len: Cell::new(0)
         }
     }
 
@@ -87,14 +91,22 @@ impl QuadsInstanceDataBuffer {
             return;
         }
 
-        let instance_buffer = context.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: None,
-            contents: bytemuck::cast_slice(&self.quads),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
+        if self.instance_buffer.borrow().is_none() || self.buffer_len.get() < self.quads.len() {
+            log::info!("Reallocating the instance buffer");
+            let instance_buffer = context.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: None,
+                contents: bytemuck::cast_slice(&self.quads),
+                usage: wgpu::BufferUsages::VERTEX,
+            });
+
+            self.instance_buffer.replace(Some(instance_buffer));
+            self.buffer_len.set(self.quads.len());
+        }
+
+        let instance_buffer = self.instance_buffer.borrow();
 
 
-        render_pass.set_vertex_buffer(1, instance_buffer.slice(..));
+        render_pass.set_vertex_buffer(1, instance_buffer.as_ref().unwrap().slice(0..(self.quads.len() * std::mem::size_of::<QuadInstanceData>()) as _));
         render_pass.draw_indexed(0..QUAD_INDICES.len() as _, 0, 0..self.quads.len() as _);
     }
 }
@@ -124,8 +136,6 @@ pub struct Renderer2D {
     camera_buffer: wgpu::Buffer,
     camera_bind_group_layout: wgpu::BindGroupLayout,
     
-
-    texture_bind_group_layout: wgpu::BindGroupLayout,
     white_texture: AssetHandle<Texture2D>,
     quads_instances: HashMap<AssetHandle<Texture2D>, QuadsInstanceDataBuffer>,
 }
@@ -158,36 +168,11 @@ impl Renderer2D {
                     ],
                 });
 
-
-        let texture_bind_group_layout = context.device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            multisampled: false,
-                            view_dimension: wgpu::TextureViewDimension::D2,
-                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        // This should match the filterable field of the
-                        // corresponding Texture entry above. 
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                        count: None,
-                    },
-                ],
-                label: Some("texture_bind_group_layout"),
-            });
-
         let render_pipeline_layout = context.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Renderer2D pipeline layout"),
             bind_group_layouts: &[
                 &camera_bind_group_layout,
-                &texture_bind_group_layout
+                &Texture2D::create_bind_group_layout(context)
             ],
             push_constant_ranges: &[],
         });
@@ -260,7 +245,6 @@ impl Renderer2D {
             assets_manager,
 
             quads_instances: HashMap::new(),
-            texture_bind_group_layout,
             white_texture,
         }
     }
@@ -347,23 +331,8 @@ impl Renderer2D {
         for (handle, quads) in &self.quads_instances {
 
             let texture= lock.get_asset(*handle);
-            let texture_bind_group = context.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("Quads bind group"),
-                layout: &self.texture_bind_group_layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: wgpu::BindingResource::TextureView(&texture.view)
-                    },
 
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::Sampler(&texture.sampler)
-                    }
-                ],
-            });
-
-            render_pass.set_bind_group(1, &texture_bind_group, &[]);
+            render_pass.set_bind_group(1, &texture.bind_group, &[]);
 
             quads.submit_to_render_pass(context, render_pass);
         }

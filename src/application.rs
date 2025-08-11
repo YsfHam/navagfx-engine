@@ -77,7 +77,7 @@ impl<Handler: ApplicationHandler> winit::application::ApplicationHandler<AppData
         let elapsed = self.timer.elapsed();
         self.timer = Instant::now();
         
-        log::info!("FPS {}", 1.0 / elapsed.as_secs_f64());
+        //log::info!("FPS {}", 1.0 / elapsed.as_secs_f64());
 
         
         let signal = match event {

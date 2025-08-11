@@ -138,7 +138,7 @@ impl ApplicationHandler for MyAppHandler {
 
                 //quad.color = glam::vec4((x as f32).cos() * 0.5 + 0.5, (y as f32).cos() * 0.5 + 0.5, 0.4, 1.0);
 
-                quads.push(quad);
+                //quads.push(quad);
             }
         }
 
@@ -165,13 +165,9 @@ impl ApplicationHandler for MyAppHandler {
 
         self.renderer2d.begin(Color{r: 0.01, g:0.01, b:0.01, a:1.0}, &Camera2D::new(width, height));
 
-        let quad = Quad::new(
-            glam::vec2(32.0, 100.0),
-            glam::vec2(200.0, 200.0),
-            0.0
-        );
-
-        self.renderer2d.draw_quad_textured(&quad, self.samurai_idle_tex, self.samurai_idle_animation.get_frame_coords());
+        for quad in &self.quads {
+            self.renderer2d.draw_quad_textured(&quad, self.samurai_idle_tex, self.samurai_idle_animation.get_frame_coords());
+        }
 
         self.renderer2d.submit(context).unwrap();
     }
@@ -181,6 +177,14 @@ impl ApplicationHandler for MyAppHandler {
 
         if let ApplicationEvent::KeyPressed { key_info: KeyInfo {physical_key_code: KeyCode::Escape, ..}, .. } = event {
             return ApplicationSignal::Exit;
+        }
+
+        if let ApplicationEvent::KeyPressed { key_info: KeyInfo {physical_key_code: KeyCode::KeyS, ..}, .. } = event {
+            self.quads.push(Quad::new(
+                glam::vec2(32.0, 100.0),
+                glam::vec2(200.0, 200.0),
+                0.0
+            ));
         }
 
         ApplicationSignal::Continue
