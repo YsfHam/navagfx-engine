@@ -1,9 +1,0 @@
-[package]
-name = "navagfx-engine-test"
-version = "0.1.0"
-edition = "2024"
-
-[dependencies]
-navagfx-engine = { path = "../../core"}
-simple_logger = "5.0.0"
-log = "0.4"
