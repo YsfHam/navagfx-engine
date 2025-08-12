@@ -1,22 +1,27 @@
 use std::sync::{Arc, Mutex};
 
-use winit::{event::WindowEvent, event_loop::{ActiveEventLoop, EventLoop}, window::{Window, WindowAttributes}};
+use winit::{event::{KeyEvent, WindowEvent}, event_loop::{ActiveEventLoop, EventLoop}, keyboard::{Key, PhysicalKey}, window::{Window, WindowAttributes}};
 
-use crate::{application::event::{ApplicationEvent, ApplicationSignal}, assets::{texture::Texture2D, AssetsManager, AssetsManagerRef}, graphics::GraphicsContext, Timer};
+use crate::{application::{event::{ApplicationEvent, ApplicationSignal}, input::{Input, KeyboardKeyState}}, assets::{texture::Texture2D, AssetsManager, AssetsManagerRef}, graphics::GraphicsContext, Timer};
 
 pub mod event;
+pub mod input;
 
 pub trait ApplicationHandler {
     fn init(context: &GraphicsContext, assets_manager: AssetsManagerRef) -> Self;
     fn update(&mut self, dt: f32) -> ApplicationSignal;
     fn draw(&mut self, context: &GraphicsContext) -> Result<(), wgpu::SurfaceError>;
-    fn handle_event(&mut self, event: ApplicationEvent, dt: f32) -> ApplicationSignal;
+    fn handle_event(&mut self, event: ApplicationEvent) -> ApplicationSignal;
+    fn handle_input(&mut self, input: &Input) -> ApplicationSignal;
 }
 
 
 pub struct Application<Handler: ApplicationHandler> {
     handler: Option<Handler>,
     data: Option<AppData>,
+    input: Input,
+
+
     timer: Timer,
 }
 
@@ -26,6 +31,8 @@ impl<Handler: ApplicationHandler> Application<Handler> {
         Self {
             handler: None,
             data: None,
+            input: Input::new(),
+            
             timer: Timer::new(),
         }
     }
@@ -77,6 +84,8 @@ impl<Handler: ApplicationHandler> winit::application::ApplicationHandler<AppData
         let elapsed = self.timer.restart();
         let elapsed_as_secs = elapsed.as_secs_f32();
 
+
+        self.input.keyboard_input.set_released_keys_to_idle();
         
         let signal = match event {
             WindowEvent::CloseRequested => {event_loop.exit(); None}
@@ -101,19 +110,53 @@ impl<Handler: ApplicationHandler> winit::application::ApplicationHandler<AppData
             WindowEvent::Resized(size) => {
                 data.context.resize_surface(size.width, size.height);
 
-                Some(handler.handle_event(ApplicationEvent::Resized { width: size.width, height: size.height }, elapsed_as_secs))
+                Some(handler.handle_event(ApplicationEvent::Resized { width: size.width, height: size.height }))
+            }
+
+            WindowEvent::KeyboardInput {
+                event: KeyEvent {
+                    physical_key: PhysicalKey::Code(key),
+                    logical_key,
+                    state,
+                    ..
+                },
+                ..
+            } => {
+
+                let key_symbole = 
+                    if let Key::Character(sym_str) = logical_key {
+                    let symbole = sym_str.chars().next().unwrap();
+                    Some(symbole)
+                }
+                else {
+                    None
+                };
+
+                let key_state = match state {
+                    winit::event::ElementState::Pressed => KeyboardKeyState::Pressed,
+                    winit::event::ElementState::Released => KeyboardKeyState::Released,
+                };
+
+                self.input.keyboard_input.set_key_state(key, key_symbole, key_state);
+
+                None
             }
 
             ev => if let Some(app_event) = ApplicationEvent::from_window_event(ev) {
-                Some(handler.handle_event(app_event, elapsed_as_secs))
+                Some(handler.handle_event(app_event))
             }
             else {
                 None
             }
         };
-        if let Some(signal) = signal {
-            self.handle_signal(event_loop, signal);
-        }
+
+
+        let signal = signal
+            .unwrap_or(
+                handler.handle_input(&self.input)
+            );
+            
+        self.handle_signal(event_loop, signal);
 
     }
 }

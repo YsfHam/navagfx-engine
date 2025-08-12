@@ -32,14 +32,31 @@ impl Quad {
         self.transform_needs_update = true;
     }
 
+    pub fn get_position(&self) -> glam::Vec2 {
+        self.position
+    }
+
     pub fn set_size(&mut self, size: glam::Vec2) {
         self.size = size;
         self.transform_needs_update = true;
     }
 
-    pub fn rotate(&mut self, rotation: f32) {
-        self.rotation += rotation;
+    pub fn get_size(&self) -> glam::Vec2 {
+        self.size
+    }
+
+    pub fn rotate(&mut self, delta_rotation: f32) {
+        self.rotation += delta_rotation;
         self.transform_needs_update = true;
+    }
+
+    pub fn set_rotation(&mut self, rotation: f32) {
+        self.rotation = rotation;
+        self.transform_needs_update = true;
+    }
+
+    pub fn get_rotation(&self) -> f32 {
+        self.rotation
     }
 
     pub fn get_transform(&self) -> glam::Mat4 {

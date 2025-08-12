@@ -1,9 +1,9 @@
 [package]
-name = "navagfx-engine-test"
+name = "breakout"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-navagfx-engine = { path = "../../core"}
+navagfx-engine = { path = "../../core" }
 simple_logger = "5.0.0"
 log = "0.4"
