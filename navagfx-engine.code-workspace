@@ -3,6 +3,9 @@
 		{
 			"path": "core"
 		},
-		],
+		{
+			"path": "examples/navagfx-engine-test"
+		}
+	],
 	"settings": {}
 }
