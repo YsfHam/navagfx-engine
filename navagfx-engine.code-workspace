@@ -5,6 +5,9 @@
 		},
 		{
 			"path": "examples/navagfx-engine-test"
+		},
+		{
+			"path": "examples/breakout"
 		}
 	],
 	"settings": {}
