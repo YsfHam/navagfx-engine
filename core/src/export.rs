@@ -5,6 +5,7 @@ pub mod graphics_export {
 
 pub mod application_export {
     pub use winit::keyboard::KeyCode;
+    pub use winit::window::WindowAttributes;
 }
 
 pub use glam;

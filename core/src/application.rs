@@ -1,11 +1,38 @@
 use std::sync::{Arc, Mutex};
 
-use winit::{event::{KeyEvent, WindowEvent}, event_loop::{ActiveEventLoop, EventLoop}, keyboard::{Key, PhysicalKey}, window::{Window, WindowAttributes}};
+use winit::{dpi::LogicalSize, event::{KeyEvent, WindowEvent}, event_loop::{ActiveEventLoop, EventLoop}, keyboard::{Key, PhysicalKey}, window::{Window, WindowAttributes, WindowButtons}};
 
 use crate::{application::{event::{ApplicationEvent, ApplicationSignal}, input::{Input, KeyboardKeyState}}, assets::{texture::Texture2D, AssetsManager, AssetsManagerRef}, graphics::GraphicsContext, Timer};
 
 pub mod event;
 pub mod input;
+
+
+#[derive(Default, Clone)]
+pub struct ApplicationSettings<'a> {
+    pub window_title: &'a str,
+    pub window_width: u32,
+    pub window_height: u32,
+    pub window_resizable: bool,
+}
+
+impl ApplicationSettings<'_> {
+    fn create_window_attributes(&self) -> WindowAttributes {
+
+        let mut window_enabled_buttons = WindowButtons::CLOSE | WindowButtons::MINIMIZE;
+        if self.window_resizable {
+            window_enabled_buttons |= WindowButtons::MAXIMIZE;
+        }
+
+        WindowAttributes::default()
+        .with_title(self.window_title)
+        .with_inner_size(LogicalSize::new(self.window_width, self.window_height))
+        .with_resizable(self.window_resizable)
+        .with_visible(false)
+        .with_enabled_buttons(window_enabled_buttons)
+    }
+}
+
 
 pub trait ApplicationHandler {
     fn init(context: &GraphicsContext, assets_manager: AssetsManagerRef) -> Self;
@@ -16,22 +43,23 @@ pub trait ApplicationHandler {
 }
 
 
-pub struct Application<Handler: ApplicationHandler> {
+pub struct Application<'a, Handler: ApplicationHandler> {
     handler: Option<Handler>,
     data: Option<AppData>,
     input: Input,
-
+    settings: ApplicationSettings<'a>,
 
     timer: Timer,
 }
 
-impl<Handler: ApplicationHandler> Application<Handler> {
-    pub fn new() -> Self {
+impl<'a, Handler: ApplicationHandler> Application<'a, Handler> {
 
+    pub fn new(settings: ApplicationSettings<'a>) -> Self {
         Self {
             handler: None,
             data: None,
             input: Input::new(),
+            settings,
             
             timer: Timer::new(),
         }
@@ -57,12 +85,13 @@ impl<Handler: ApplicationHandler> Application<Handler> {
 }
 
 
-impl<Handler: ApplicationHandler> winit::application::ApplicationHandler<AppData> for Application<Handler> {
+impl<'a, Handler: ApplicationHandler> winit::application::ApplicationHandler<AppData> for Application<'a, Handler> {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
         log::info!("Initializing application data and handler");
         
-        let window = event_loop.create_window(WindowAttributes::default()).unwrap();
+        let window = event_loop.create_window(self.settings.create_window_attributes()).unwrap();
         let data = smol::block_on(AppData::new(window));
+        data.window.set_visible(true);
 
         self.handler = Some(Handler::init(&data.context, data.assets_manager.clone()));
 
@@ -83,6 +112,9 @@ impl<Handler: ApplicationHandler> winit::application::ApplicationHandler<AppData
 
         let elapsed = self.timer.restart();
         let elapsed_as_secs = elapsed.as_secs_f32();
+
+        let window_title = self.settings.window_title.to_string();
+        data.window.set_title(&(window_title + &format!(" [FPS: {}]", 1.0 / elapsed_as_secs)));
 
 
         self.input.keyboard_input.set_released_keys_to_idle();
