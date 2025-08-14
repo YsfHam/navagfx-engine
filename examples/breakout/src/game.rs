@@ -6,6 +6,7 @@ use crate::game::game_state::{GameState, LevelData};
 
 
 mod game_state;
+mod entities;
 
 
 pub struct GameApp {
@@ -21,7 +22,7 @@ impl ApplicationHandler for GameApp {
     fn init(context: &GraphicsContext, assets_manager: AssetsManagerRef) -> Self {
         let renderer = Renderer2D::new(context, assets_manager);
         
-        let level_data = LevelData::load_from_file("assets/two.lvl");
+        let level_data = LevelData::load_from_file("assets/one.lvl");
         Self {
             renderer,
             game_state: GameState::new(

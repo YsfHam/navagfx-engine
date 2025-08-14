@@ -1,30 +1,16 @@
-use navagfx_engine::{application::input::{Input, KeyboardKey}, export::{application_export::KeyCode, glam}, graphics::{renderer2d::Renderer2D, shapes::Quad}};
+use std::f32;
+
+use navagfx_engine::{application::input::{Input, KeyboardKey}, export::{application_export::KeyCode, glam}, graphics::renderer2d::Renderer2D};
 
 use navagfx_engine::{application::event::{ApplicationEvent, ApplicationSignal}, export::{graphics_export::Color}, graphics::camera::Camera2D};
 
-use crate::physics::{circle_rectangle_collision_check, Circle, Rectangle};
+use crate::{game::entities::{Ball, BrickType, BricksManager, Paddle}, physics::{circle_rectangle_collision_check, HitInfo}};
 
-
-enum BrickType {
-    None,
-    Solid,
-    Destroyable(u32)
-}
-
-impl From<u32> for BrickType {
-    fn from(value: u32) -> Self {
-        match value {
-            0 => Self::None,
-            1 => Self::Solid,
-            n => Self::Destroyable(n)
-        }
-    }
-}
 
 pub struct LevelData {
-    bricks_rows: usize,
-    bricks_cols: usize,
-    bricks_types: Vec<BrickType>,
+    pub bricks_rows: usize,
+    pub bricks_cols: usize,
+    pub bricks_types: Vec<BrickType>,
 }
 
 impl LevelData {
@@ -64,151 +50,25 @@ impl LevelData {
 }
 
 
-struct Brick {
-    quad: Quad,
-    is_solid: bool,
-    destroyed: bool,
-}
-
-struct BricksManager {
-    bricks: Vec<Brick>
-}
-
-impl BricksManager {
-    fn new(level_data: LevelData, lvl_width: f32, lvl_height: f32) -> Self {
-        let brick_width = lvl_width / level_data.bricks_cols as f32;
-        let brick_height = lvl_height / level_data.bricks_rows as f32;
-
-        let mut bricks = Vec::with_capacity(level_data.bricks_types.len());
-
-        for y in 0..level_data.bricks_rows {
-            for x in 0..level_data.bricks_cols {
-                let brick_type = level_data.bricks_types.get(y * level_data.bricks_cols + x).unwrap();
-                let (color, is_solid) = match brick_type {
-                    BrickType::None => continue,
-                    BrickType::Solid => (glam::vec4(0.5, 0.5, 0.5, 1.0), true),
-                    BrickType::Destroyable(id) => (Self::get_brick_color(*id), false),
-                };
-
-                let pos = glam::vec2(x as f32 * brick_width, y as f32 * brick_height);
-                let size = glam::vec2(brick_width, brick_height);
-                let mut quad = Quad::new(pos, size, 0.0);
-                quad.color = color;
-                bricks.push(Brick {
-                    quad,
-                    is_solid,
-                    destroyed: false,
-                })
-            }
-        }
-
-        Self {
-            bricks
-        }
-    }
-
-    fn get_brick_color(id: u32) -> glam::Vec4 {
-        match id {
-            2 => glam::vec4(0.2, 0.6, 1.0, 1.0),
-            3 => glam::vec4(0.0, 0.7, 0.0, 1.0),
-            4 => glam::vec4(0.8, 0.8, 0.4, 1.0),
-            5 => glam::vec4(1.0, 0.5, 0.0, 1.0),
-            _ => panic!("Unknow brick id {id}")
-        }
-    }
-
-    fn draw(&self, renderer: &mut Renderer2D) {
-
-        self.bricks.iter()
-        .filter(|brick| !brick.destroyed)
-        .for_each(|brick| renderer.draw_quad(&brick.quad));
-    }
-
-    fn check_collisions(&mut self, ball: &Ball) -> bool {
-        let circle = Circle {
-            radius: ball.radius,
-            position: ball.object.quad.get_position()
-        };
-        self.bricks.iter_mut()
-        .filter(|brick| !brick.destroyed)
-        .map(|brick| {
-            let half_size = brick.quad.get_size() * 0.5;
-            let rect = Rectangle {
-                position: brick.quad.get_position() + half_size,
-                size: half_size
-            };
-
-            (brick, rect)
-        })
-        .fold(false, |acc, (brick, rect)| {
-            let collided = circle_rectangle_collision_check(&circle, &rect);
-            brick.destroyed = collided && !brick.is_solid;
-
-            collided || acc
-        })
-    }
-
-}
-
-
-struct DynamicObject {
-    velocity: glam::Vec2,
-    direction: glam::Vec2,
-    quad: Quad,
-}
-
-impl DynamicObject {
-    fn new(quad: Quad, velocity: glam::Vec2) -> Self {
-        Self {
-            quad,
-            velocity,
-            direction: glam::Vec2::ZERO
-        }
-    }
-
-    fn update(&mut self, dt: f32) {
-        let current_pos = self.quad.get_position();
-
-        let new_pos = current_pos + self.velocity * self.direction * dt;
-        self.quad.set_position(new_pos);
-    }
-
-    fn render(&self, renderer: &mut Renderer2D) {
-        renderer.draw_quad(&self.quad);
-    }
-}
-
-struct Ball {
-    object: DynamicObject,
-    radius: f32,
-}
-
-impl Ball {
-
-    fn new(position: glam::Vec2, radius: f32, velocity: glam::Vec2) -> Self {
-
-        let quad_side_length = radius * 2.0;
-
-        let mut ball_quad = Quad::new(position, glam::vec2(quad_side_length, quad_side_length), 0.0);
-        ball_quad.color = glam::vec4(1.0, 0.0, 0.0, 1.0);
-        Self {
-            object: DynamicObject::new(ball_quad, velocity),
-            radius
-        }
-    }
-}
-
 const PLAYER_VELOCITY: f32 = 400.0;
-const BALL_VELOCITY: glam::Vec2 = glam::vec2(100.0, 300.0);
+const BALL_VELOCITY: glam::Vec2 = glam::vec2(100.0, -300.0);
 const BALL_RADIUS: f32 = 10.0;
 const PADDLE_SIZE: glam::Vec2 = glam::vec2(100.0, 10.0);
+
+
+fn get_center_over_rect(rect_pos: glam::Vec2, rect_size: glam::Vec2) -> glam::Vec2 {
+    let half_size = rect_size * 0.5;
+    let center_pos = rect_pos + half_size;
+
+    glam::vec2(center_pos.x, center_pos.y - half_size.y)
+}
 
 
 pub struct GameState {
     camera: Camera2D,
 
     ball: Ball,
-    paddle: DynamicObject,
+    paddle: Paddle,
     ball_idle: bool,
 
     bricks_mgr: BricksManager,
@@ -219,26 +79,18 @@ pub struct GameState {
 impl GameState {
     pub fn new(window_width: f32, window_height: f32, level_data: LevelData) -> Self {
 
-        let paddle_size = PADDLE_SIZE;
         let paddle_pos = glam::vec2(
-            (window_width - paddle_size.x) * 0.5,
-            window_height - paddle_size.y
+            (window_width - PADDLE_SIZE.x) * 0.5,
+            window_height - PADDLE_SIZE.y
         );
 
-        let mut paddle_quad = Quad::new(paddle_pos, paddle_size, 0.0);
-        paddle_quad.color = glam::vec4(0.0, 1.0, 0.0, 1.0);
-
-        let ball_radius = BALL_RADIUS;
-        let ball_position = glam::vec2(
-            paddle_pos.x + paddle_size.x * 0.5 - ball_radius,
-            paddle_pos.y - ball_radius * 2.0
-        );
-
-        let player_vel = glam::vec2(PLAYER_VELOCITY, 0.0);
+        
+        let paddle_surface_center = get_center_over_rect(paddle_pos, PADDLE_SIZE);
+        let ball_position = glam::vec2(paddle_surface_center.x, paddle_surface_center.y - BALL_RADIUS);
         Self {
             camera: Camera2D::new(window_width, window_height),
-            ball: Ball::new(ball_position, ball_radius, player_vel),
-            paddle: DynamicObject::new(paddle_quad, player_vel),
+            ball: Ball::new(ball_position, BALL_VELOCITY, BALL_RADIUS),
+            paddle: Paddle::new(paddle_pos, PLAYER_VELOCITY, PADDLE_SIZE),
             ball_idle: true,
             bricks_mgr: BricksManager::new(level_data, window_width, window_height * 0.5),
             window_height,
@@ -248,23 +100,26 @@ impl GameState {
 
     pub fn update(&mut self, dt: f32) -> ApplicationSignal {
 
-        
+        self.paddle.transform.update(dt);
+        self.keep_paddle_inside_screen();
+
         if self.ball_idle {
-            self.ball.object.direction = self.paddle.direction;
+            let paddle_pos = self.paddle.transform.position;
+            let paddle_size = self.paddle.size;
+            let paddle_surface_center = get_center_over_rect(paddle_pos, paddle_size);
+            let ball_pos = glam::vec2(paddle_surface_center.x, paddle_surface_center.y - self.ball.radius);
+            self.ball.transform.position = ball_pos;
+        }
+        else {
+            self.ball.transform.update(dt);
+            self.resolve_ball_collision();
+            self.keep_ball_inside_screen();
         }
 
-        self.paddle.update(dt);
-        self.ball.object.update(dt);
-        if self.bricks_mgr.check_collisions(&self.ball) {
-            self.ball.object.direction *= -1.0;
-        }
 
-        self.keep_ball_inside_screen();
-
-        if self.check_ball_paddle_collision() {
-            self.ball.object.direction.y = -1.0;
+        if self.ball.transform.position.y - self.ball.radius > self.window_height {
+            return ApplicationSignal::Exit;
         }
-        
 
         ApplicationSignal::Continue
     }
@@ -276,7 +131,7 @@ impl GameState {
         self.bricks_mgr.draw(renderer);
         
         self.paddle.render(renderer);
-        self.ball.object.render(renderer);
+        self.ball.render(renderer);
     }
 
     pub fn handle_event(&mut self, event: ApplicationEvent) -> ApplicationSignal {
@@ -290,71 +145,98 @@ impl GameState {
     }
     
     pub fn handle_input(&mut self, input: &Input) -> ApplicationSignal {
+        self.paddle.transform.velocity.x = 
         if input.keyboard_input.is_key_pressed(KeyboardKey::Code(KeyCode::ArrowLeft)) {
-            self.paddle.direction.x = -1.0;
+            -PLAYER_VELOCITY
         }
         else if input.keyboard_input.is_key_pressed(KeyboardKey::Code(KeyCode::ArrowRight)) {
-            self.paddle.direction.x = 1.0;
+            PLAYER_VELOCITY
         }
         else {
-            self.paddle.direction.x = 0.0;
-        }
-
-        self.keep_paddle_inside_screen();
+            0.0
+        };
 
         if input.keyboard_input.is_key_pressed(KeyboardKey::Code(KeyCode::Space)) && self.ball_idle{
             self.ball_idle = false;
-            self.ball.object.velocity = BALL_VELOCITY;
-            self.ball.object.direction = glam::vec2(-1.0, -1.0);
+            self.ball.transform.velocity = BALL_VELOCITY;
         }
 
         ApplicationSignal::Continue
     }
 
     fn keep_paddle_inside_screen(&mut self) {
-        let paddle_pos_x = self.paddle.quad.get_position().x;
 
-        if paddle_pos_x < 0.0 {
-            self.paddle.direction.x = 1.0;
-        }
-        else if paddle_pos_x + self.paddle.quad.get_size().x > self.window_width {
-            self.paddle.direction.x = -1.0;
-        }
+        let x_pos = self.paddle.transform.position.x;
+        self.paddle.transform.position.x = x_pos.clamp(0.0, self.window_width - self.paddle.size.x);
     }
 
     fn keep_ball_inside_screen(&mut self) {
-        if self.ball_idle {
+
+        let ball_pos = self.ball.transform.position;
+        let ball_radius = self.ball.radius;
+
+        if ball_pos.x < ball_radius || ball_pos.x + ball_radius > self.window_width {
+            self.ball.transform.velocity.x *= -1.0;
+        }
+
+        if ball_pos.y < ball_radius {
+            self.ball.transform.velocity.y *= -1.0;
+        }
+    }
+
+    fn check_ball_paddle_collision(&self) -> Option<HitInfo> {
+        let circle = self.ball.get_collider();
+
+        let paddle_rect = self.paddle.get_collider();
+
+        circle_rectangle_collision_check(&circle, &paddle_rect)
+    }
+
+    fn resolve_ball_collision(&mut self) {
+
+        self.resolve_bricks_collisions();
+        self.resolve_paddle_collisions();
+    }
+
+    fn resolve_bricks_collisions(&mut self) {
+        let hit_infos = self.bricks_mgr.check_collisions(&self.ball);
+
+        for hit_info in hit_infos {
+            let normal = hit_info.hit_side_normal;
+            let velocity = self.ball.transform.velocity;
+            let reflection_vel = velocity - 2.0 * velocity.dot(normal) * normal;
+
+            self.ball.transform.velocity = reflection_vel;
+
+            let penetration_length = self.ball.radius - hit_info.circle_to_hit_point.length();
+            self.ball.transform.position += normal * penetration_length;
+
+        }
+    }
+
+    fn resolve_paddle_collisions(&mut self) {
+        let hit_info_opt = self.check_ball_paddle_collision();
+        if hit_info_opt.is_none() {
             return;
         }
 
-        let ball_pos = self.ball.object.quad.get_position();
-        let ball_size = self.ball.object.quad.get_size();
-        let mut ball_direction = self.ball.object.direction;
+        let half_size = self.paddle.size * 0.5;
+        let paddle_center = self.paddle.transform.position + half_size;
+        let dist_to_center = self.ball.transform.position.x + self.ball.radius - paddle_center.x;
+        let percentage = dist_to_center / half_size.x;
+        let strength = 2.0;
+        let new_ball_vel_x = BALL_VELOCITY.x * percentage * strength;
 
+        let old_ball_vel = self.ball.transform.velocity;
+        self.ball.transform.velocity.x = new_ball_vel_x;
+        self.ball.transform.velocity.y *= -1.0;
 
-        if ball_pos.x < 0.0 {
-            ball_direction.x = 1.0;
-        }
-        else if ball_pos.x + ball_size.x > self.window_width {
-            ball_direction.x = -1.0;
-        }
+        self.ball.transform.velocity = old_ball_vel.length() * self.ball.transform.velocity.normalize();
 
-        if ball_pos.y < 0.0 {
-            ball_direction.y = 1.0;
-        }
+        let hit_info = hit_info_opt.unwrap();
 
-        self.ball.object.direction = ball_direction;
-    }
-
-    fn check_ball_paddle_collision(&self) -> bool {
-        let circle = Circle {
-            radius: self.ball.radius,
-            position: self.ball.object.quad.get_position()
-        };
-
-        let paddle_rect = Rectangle::from(&self.paddle.quad);
-
-        circle_rectangle_collision_check(&circle, &paddle_rect)
+        let penetration = self.ball.radius - hit_info.hit_side_normal.length();
+        self.ball.transform.position.y -= penetration;
     }
 
 }
