@@ -2,7 +2,7 @@ use std::{cell::{Cell, RefCell}, collections::HashMap};
 
 use wgpu::{include_wgsl, util::DeviceExt};
 
-use crate::{application::GraphicsContextRef, assets::{texture::{Texture2D, Texture2DCoordinates}, AssetHandle, AssetsManagerRef}, graphics::{camera::{Camera2D, CameraUniform}, shapes::Quad, GraphicsContext}};
+use crate::{application::GraphicsContextRef, assets::{texture::{RawRgbaImageData, Texture2D, Texture2DCoordinates}, AssetHandle, AssetsManagerRef}, graphics::{camera::{Camera2D, CameraUniform}, shapes::Quad, GraphicsContext}};
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Zeroable, bytemuck::Pod)]
@@ -234,9 +234,11 @@ impl Renderer2D {
         let white_texture = assets_manager
             .write()
             .unwrap()
-            .store_asset(
-                Texture2D::from_memory(&context_lock, "dymm", &[255, 255, 255, 255], 1, 1)
-            )
+            .load_asset(RawRgbaImageData {
+                pixels: &[255, 255, 255, 255],
+                width: 1,
+                height: 1,
+            })
             .unwrap();
 
         drop(context_lock);

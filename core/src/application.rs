@@ -2,7 +2,7 @@ use std::sync::{Arc, RwLock};
 
 use winit::{dpi::LogicalSize, event::{KeyEvent, WindowEvent}, event_loop::{ActiveEventLoop, EventLoop}, keyboard::{Key, PhysicalKey}, window::{Window, WindowAttributes, WindowButtons}};
 
-use crate::{application::{event::{ApplicationEvent, ApplicationSignal}, input::{Input, KeyboardKeyState}}, assets::{loaders::Texture2DLoader, texture::Texture2D, AssetsManager, AssetsManagerRef}, graphics::GraphicsContext, Timer};
+use crate::{application::{event::{ApplicationEvent, ApplicationSignal}, input::{Input, KeyboardKeyState}}, assets::{loaders::Texture2DLoader, texture::{RawRgbaImageData, Texture2D}, AssetsManager, AssetsManagerRef}, graphics::GraphicsContext, Timer};
 
 pub mod event;
 pub mod input;
@@ -236,6 +236,7 @@ impl AppData {
     }
 
     fn register_assets_loaders(assets_manager: &mut AssetsManager, context: GraphicsContextRef<'static>) {
-        assets_manager.register_loader(Texture2DLoader::new(context));
+        assets_manager.register_loader::<_, _, &str>(Texture2DLoader::new(context.clone()));
+        assets_manager.register_loader::<_, _, RawRgbaImageData>(Texture2DLoader::new(context.clone()));
     }
 }

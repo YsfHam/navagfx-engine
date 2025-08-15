@@ -1,6 +1,13 @@
 use image::RgbaImage;
 
-use crate::{assets::{loaders, Asset, AssetHasDefaultLoader}, graphics::GraphicsContext};
+use crate::{assets::{loaders, Asset, AssetHasDefaultLoader}, graphics::GraphicsContext, impl_default_loader};
+
+
+pub struct RawRgbaImageData<'a> {
+    pub pixels: &'a [u8],
+    pub width: u32,
+    pub height: u32
+}
 
 
 #[derive(Copy, Clone)]
@@ -88,9 +95,13 @@ pub struct Texture2D {
 
 impl Asset for Texture2D {}
 
-impl AssetHasDefaultLoader<&str> for Texture2D {
-    type Loader = loaders::Texture2DLoader;
-}
+impl_default_loader!(
+    Texture2D, loaders::Texture2DLoader, 
+    ([] => &str),
+    (['a] => RawRgbaImageData<'a>)
+);
+
+
 
 impl Texture2D {
 

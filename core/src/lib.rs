@@ -3,6 +3,7 @@ use std::time::{Duration, Instant};
 pub mod application;
 pub mod graphics;
 pub mod assets;
+pub mod macros;
 
 pub mod export;
 
