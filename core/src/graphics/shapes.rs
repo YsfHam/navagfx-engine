@@ -5,6 +5,7 @@ pub struct Quad {
     position: glam::Vec2,
     size: glam::Vec2,
     rotation: f32,
+    pub z_index: i32,
     pub color: glam::Vec4,
 
     transform: Cell<glam::Mat4>,
@@ -23,7 +24,8 @@ impl Quad {
             rotation,
             transform: Cell::new(transform),
             color: glam::vec4(1.0, 1.0, 1.0, 1.0),
-            transform_needs_update: false
+            transform_needs_update: false,
+            z_index: 0,
         }
     }
 

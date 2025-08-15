@@ -1,8 +1,8 @@
-use navagfx_engine::{application::input::{Input, KeyboardKey}, export::application_export::KeyCode, graphics::renderer2d::Renderer2D};
+use navagfx_engine::{application::{input::{Input, KeyboardKey}, GraphicsContextRef}, export::application_export::KeyCode, graphics::renderer2d::Renderer2D};
 
-use navagfx_engine::{application::{event::{ApplicationEvent, ApplicationSignal}, ApplicationHandler}, assets::AssetsManagerRef, export::graphics_export::SurfaceError, graphics::GraphicsContext};
+use navagfx_engine::{application::{event::{ApplicationEvent, ApplicationSignal}, ApplicationHandler}, assets::AssetsManagerRef, export::graphics_export::SurfaceError};
 
-use crate::game::game_state::{GameState, LevelData};
+use crate::game::game_state::GameState;
 
 
 mod game_state;
@@ -13,22 +13,30 @@ pub struct GameApp {
     renderer: Renderer2D,
 
     game_state: GameState
+
 }
 
 impl GameApp {    
 }
 
+
 impl ApplicationHandler for GameApp {
-    fn init(context: &GraphicsContext, assets_manager: AssetsManagerRef) -> Self {
-        let renderer = Renderer2D::new(context, assets_manager);
+    fn init(context: GraphicsContextRef<'static>, assets_manager: AssetsManagerRef) -> Self {
         
-        let level_data = LevelData::load_from_file("assets/one.lvl");
+        let context_lock = context.lock().unwrap();
+        let width = context_lock.config.width;
+        let height = context_lock.config.height;
+        drop(context_lock);
+
+
+        let renderer = Renderer2D::new(context.clone(), assets_manager.clone());
+
         Self {
             renderer,
             game_state: GameState::new(
-                context.config.width as f32,
-                context.config.height as f32,
-                level_data
+                width as f32,
+                height as f32,
+                assets_manager.clone()
             )
         }
     }
@@ -37,9 +45,9 @@ impl ApplicationHandler for GameApp {
         self.game_state.update(dt)
     }
 
-    fn draw(&mut self, context: &GraphicsContext) -> Result<(), SurfaceError> {
+    fn draw(&mut self) -> Result<(), SurfaceError> {
         self.game_state.draw(&mut self.renderer);
-        self.renderer.submit(context)
+        self.renderer.submit()
     }
 
     fn handle_event(&mut self, event: ApplicationEvent) -> ApplicationSignal {

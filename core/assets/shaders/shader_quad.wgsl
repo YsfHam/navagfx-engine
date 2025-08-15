@@ -46,7 +46,7 @@ fn vs_main(
 
     var out: VertexOutput;
     out.clip_position = camera.view_proj * model_matrix * vec4<f32>(model.position, 0.0, 1.0);
-
+    out.clip_position.z = 0;
     out.color = instance.color;
     out.tex_coords = model.tex_coords * instance.tex_coords_size + instance.tex_coords_offset;
     return out;
@@ -63,5 +63,4 @@ var texture_sampler: sampler;
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     return textureSample(texture, texture_sampler, in.tex_coords) * in.color;
-    //return in.color;
 }

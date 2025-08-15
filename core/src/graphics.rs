@@ -2,6 +2,7 @@ pub mod renderer2d;
 pub mod camera;
 pub mod shapes;
 
+
 use wgpu::SurfaceTarget;
 
 pub struct GraphicsContext<'a> {
@@ -58,6 +59,7 @@ impl<'a> GraphicsContext<'a> {
         .copied()
         .unwrap_or(surface_caps.formats[0]);
 
+
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: surface_format,
@@ -70,6 +72,7 @@ impl<'a> GraphicsContext<'a> {
         };
 
         log::info!("Configuring the surface");
+
 
         surface.configure(&device, &config);
 

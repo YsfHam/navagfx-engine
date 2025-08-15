@@ -2,11 +2,13 @@ use std::sync::{Arc, Mutex};
 
 use winit::{dpi::LogicalSize, event::{KeyEvent, WindowEvent}, event_loop::{ActiveEventLoop, EventLoop}, keyboard::{Key, PhysicalKey}, window::{Window, WindowAttributes, WindowButtons}};
 
-use crate::{application::{event::{ApplicationEvent, ApplicationSignal}, input::{Input, KeyboardKeyState}}, assets::{texture::Texture2D, AssetsManager, AssetsManagerRef}, graphics::GraphicsContext, Timer};
+use crate::{application::{event::{ApplicationEvent, ApplicationSignal}, input::{Input, KeyboardKeyState}}, assets::{loaders::Texture2DLoader, texture::Texture2D, AssetsManager, AssetsManagerRef}, graphics::GraphicsContext, Timer};
 
 pub mod event;
 pub mod input;
 
+
+pub type GraphicsContextRef<'a> = Arc<Mutex<GraphicsContext<'a>>>;
 
 #[derive(Default, Clone)]
 pub struct ApplicationSettings<'a> {
@@ -35,9 +37,9 @@ impl ApplicationSettings<'_> {
 
 
 pub trait ApplicationHandler {
-    fn init(context: &GraphicsContext, assets_manager: AssetsManagerRef) -> Self;
+    fn init(context: GraphicsContextRef<'static>, assets_manager: AssetsManagerRef) -> Self;
     fn update(&mut self, dt: f32) -> ApplicationSignal;
-    fn draw(&mut self, context: &GraphicsContext) -> Result<(), wgpu::SurfaceError>;
+    fn draw(&mut self) -> Result<(), wgpu::SurfaceError>;
     fn handle_event(&mut self, event: ApplicationEvent) -> ApplicationSignal;
     fn handle_input(&mut self, input: &Input) -> ApplicationSignal;
 }
@@ -93,7 +95,7 @@ impl<'a, Handler: ApplicationHandler> winit::application::ApplicationHandler<App
         let data = smol::block_on(AppData::new(window));
         data.window.set_visible(true);
 
-        self.handler = Some(Handler::init(&data.context, data.assets_manager.clone()));
+        self.handler = Some(Handler::init(data.context.clone(), data.assets_manager.clone()));
 
         self.data = Some(data);
 
@@ -125,10 +127,13 @@ impl<'a, Handler: ApplicationHandler> winit::application::ApplicationHandler<App
 
                 let signal = handler.update(elapsed_as_secs);
 
-                match handler.draw(&data.context) {
+                match handler.draw() {
                     Ok(()) => (),
                     Err(wgpu::SurfaceError::Outdated | wgpu::SurfaceError::Lost) => {
-                        data.context.resize_surface(data.context.config.width, data.context.config.height);
+                        let mut context = data.context.lock().unwrap();
+                        let width = context.config.width;
+                        let height = context.config.height;
+                        context.resize_surface(width, height);
                     }
 
                     Err(e) => log::error!("Error while drawing to surface {e:?}"),
@@ -140,7 +145,8 @@ impl<'a, Handler: ApplicationHandler> winit::application::ApplicationHandler<App
             }
 
             WindowEvent::Resized(size) => {
-                data.context.resize_surface(size.width, size.height);
+                let mut context = data.context.lock().unwrap();
+                context.resize_surface(size.width, size.height);
 
                 Some(handler.handle_event(ApplicationEvent::Resized { width: size.width, height: size.height }))
             }
@@ -195,7 +201,7 @@ impl<'a, Handler: ApplicationHandler> winit::application::ApplicationHandler<App
 
 struct AppData {
     window: Arc<Window>,
-    context: GraphicsContext<'static>,
+    context: GraphicsContextRef<'static>,
     assets_manager: AssetsManagerRef
 }
 
@@ -206,16 +212,30 @@ impl AppData {
 
         let size = window.inner_size();
 
-        let context = GraphicsContext::new(window.clone(), size.width, size.height).await;
+        let context = Arc::new(
+            Mutex::new(
+            GraphicsContext
+            ::new(
+                window.clone(),
+                 size.width,
+                  size.height
+            ).await));
 
-        let assets_manager = AssetsManager::new()
-            .register_assets_type::<Texture2D>()
-            ;
-
+        let mut assets_manager = AssetsManager::new();
+        Self::register_assets_types(&mut assets_manager);
+        Self::register_assets_loaders(&mut assets_manager, context.clone());
         Self {
             window,
             context,
             assets_manager: Arc::new(Mutex::new(assets_manager))
         }
+    }
+
+    fn register_assets_types(assets_manager: &mut AssetsManager) {
+        assets_manager.register_assets_type::<Texture2D>().unwrap();
+    }
+
+    fn register_assets_loaders(assets_manager: &mut AssetsManager, context: GraphicsContextRef<'static>) {
+        assets_manager.register_loader(Texture2DLoader::new(context));
     }
 }

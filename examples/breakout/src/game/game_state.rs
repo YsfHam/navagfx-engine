@@ -1,6 +1,6 @@
 use std::f32;
 
-use navagfx_engine::{application::input::{Input, KeyboardKey}, export::{application_export::KeyCode, glam}, graphics::renderer2d::Renderer2D};
+use navagfx_engine::{application::input::{Input, KeyboardKey}, assets::{texture::Texture2D, AssetHandle, AssetsManagerRef}, export::{application_export::KeyCode, glam}, graphics::{renderer2d::Renderer2D, shapes::Quad}};
 
 use navagfx_engine::{application::event::{ApplicationEvent, ApplicationSignal}, export::{graphics_export::Color}, graphics::camera::Camera2D};
 
@@ -52,8 +52,8 @@ impl LevelData {
 
 const PLAYER_VELOCITY: f32 = 400.0;
 const BALL_VELOCITY: glam::Vec2 = glam::vec2(100.0, -300.0);
-const BALL_RADIUS: f32 = 10.0;
-const PADDLE_SIZE: glam::Vec2 = glam::vec2(100.0, 10.0);
+const BALL_RADIUS: f32 = 15.0;
+const PADDLE_SIZE: glam::Vec2 = glam::vec2(128.0, 16.0);
 
 
 fn get_center_over_rect(rect_pos: glam::Vec2, rect_size: glam::Vec2) -> glam::Vec2 {
@@ -73,11 +73,25 @@ pub struct GameState {
 
     bricks_mgr: BricksManager,
     window_width: f32,
-    window_height: f32
+    window_height: f32,
+
+    background_texture: AssetHandle<Texture2D>,
 }
 
 impl GameState {
-    pub fn new(window_width: f32, window_height: f32, level_data: LevelData) -> Self {
+    pub fn new(window_width: f32, window_height: f32, assets_manager: AssetsManagerRef) -> Self {
+
+        let level_data = LevelData::load_from_file("assets/levels/one.lvl");
+
+        let mut assets_manager = assets_manager.lock().unwrap();
+        let ball_texture = assets_manager.load_asset::<Texture2D, _>("assets/textures/awesomeface.png").unwrap();
+        let background_texture = assets_manager.load_asset::<Texture2D, _>("assets/textures/background.jpg").unwrap();
+
+        let solid_brick_texture = assets_manager.load_asset::<Texture2D, _>("assets/textures/block_solid.png").unwrap();
+        let brick_texture = assets_manager.load_asset::<Texture2D, _>("assets/textures/block.png").unwrap();
+
+        let paddle_texture = assets_manager.load_asset::<Texture2D, _>("assets/textures/paddle.png").unwrap();
+
 
         let paddle_pos = glam::vec2(
             (window_width - PADDLE_SIZE.x) * 0.5,
@@ -89,12 +103,13 @@ impl GameState {
         let ball_position = glam::vec2(paddle_surface_center.x, paddle_surface_center.y - BALL_RADIUS);
         Self {
             camera: Camera2D::new(window_width, window_height),
-            ball: Ball::new(ball_position, BALL_VELOCITY, BALL_RADIUS),
-            paddle: Paddle::new(paddle_pos, PLAYER_VELOCITY, PADDLE_SIZE),
+            ball: Ball::new(ball_position, BALL_VELOCITY, BALL_RADIUS, ball_texture),
+            paddle: Paddle::new(paddle_pos, PLAYER_VELOCITY, PADDLE_SIZE, paddle_texture),
             ball_idle: true,
-            bricks_mgr: BricksManager::new(level_data, window_width, window_height * 0.5),
+            bricks_mgr: BricksManager::new(level_data, window_width, window_height * 0.5, solid_brick_texture, brick_texture),
             window_height,
-            window_width
+            window_width,
+            background_texture
         }
     }
 
@@ -128,10 +143,21 @@ impl GameState {
 
         renderer.begin(Color::BLACK, &self.camera);
 
+        let mut quad = Quad::new(
+            glam::vec2(0.0, 0.0),
+            glam::vec2(self.window_width, self.window_height),
+            0.0
+        );
+
+        quad.z_index = -100;
+
+        renderer.draw_quad_textured( &quad, self.background_texture, Default::default());
+        
+        self.ball.render(renderer);
+        
         self.bricks_mgr.draw(renderer);
         
         self.paddle.render(renderer);
-        self.ball.render(renderer);
     }
 
     pub fn handle_event(&mut self, event: ApplicationEvent) -> ApplicationSignal {
@@ -201,9 +227,9 @@ impl GameState {
     fn resolve_bricks_collisions(&mut self) {
         let hit_infos = self.bricks_mgr.check_collisions(&self.ball);
 
+        let velocity = self.ball.transform.velocity;
         for hit_info in hit_infos {
             let normal = hit_info.hit_side_normal;
-            let velocity = self.ball.transform.velocity;
             let reflection_vel = velocity - 2.0 * velocity.dot(normal) * normal;
 
             self.ball.transform.velocity = reflection_vel;

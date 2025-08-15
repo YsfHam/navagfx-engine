@@ -1,6 +1,6 @@
 use image::RgbaImage;
 
-use crate::{assets::Asset, graphics::GraphicsContext};
+use crate::{assets::{loaders, Asset, AssetHasDefaultLoader}, graphics::GraphicsContext};
 
 
 #[derive(Copy, Clone)]
@@ -87,6 +87,10 @@ pub struct Texture2D {
 }
 
 impl Asset for Texture2D {}
+
+impl AssetHasDefaultLoader<&str> for Texture2D {
+    type Loader = loaders::Texture2DLoader;
+}
 
 impl Texture2D {
 

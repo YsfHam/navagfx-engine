@@ -1,4 +1,4 @@
-use navagfx_engine::{export::glam, graphics::{renderer2d::Renderer2D, shapes::Quad}};
+use navagfx_engine::{assets::{texture::Texture2D, AssetHandle}, export::glam, graphics::{renderer2d::Renderer2D, shapes::Quad}};
 
 use crate::{game::game_state::LevelData, physics::{circle_rectangle_collision_check, Circle, HitInfo, Rectangle}};
 
@@ -17,17 +17,20 @@ impl Transform {
 pub struct Ball {
     pub transform: Transform,
     pub radius: f32,
+
+    texture: AssetHandle<Texture2D>,
 }
 
 impl Ball {
 
-    pub fn new(position: glam::Vec2, velocity: glam::Vec2, radius: f32) -> Self {
+    pub fn new(position: glam::Vec2, velocity: glam::Vec2, radius: f32, texture: AssetHandle<Texture2D>) -> Self {
         Self{
             transform: Transform {
                 position,
                 velocity,
             },
-            radius
+            radius,
+            texture
         }
     }
 
@@ -44,9 +47,8 @@ impl Ball {
         let quad_half_size = glam::vec2(self.radius, self.radius);
         let quad_position = self.transform.position - quad_half_size;
 
-        let mut quad = Quad::new(quad_position, quad_half_size * 2.0, 0.0);
-        quad.color = glam::vec4(1.0, 0.0, 0.0, 1.0);
-        renderer.draw_quad(&quad);
+        let quad = Quad::new(quad_position, quad_half_size * 2.0, 0.0);
+        renderer.draw_quad_textured(&quad, self.texture, Default::default());
     }
 }
 
@@ -54,17 +56,20 @@ impl Ball {
 pub struct Paddle {
     pub transform: Transform,
     pub size: glam::Vec2,
+
+    texture: AssetHandle<Texture2D>,
 }
 
 impl Paddle {
 
-    pub fn new(position: glam::Vec2, velocity: f32, size: glam::Vec2) -> Self {
+    pub fn new(position: glam::Vec2, velocity: f32, size: glam::Vec2, texture: AssetHandle<Texture2D>) -> Self {
         Self{
             transform: Transform {
                 position,
                 velocity: glam::vec2(velocity, 0.0)
             },
-            size
+            size,
+            texture
         }
     }
 
@@ -79,9 +84,8 @@ impl Paddle {
 
     pub fn render(&self, renderer: &mut Renderer2D) {
 
-        let mut quad = Quad::new(self.transform.position, self.size, 0.0);
-        quad.color = glam::vec4(0.0, 1.0, 0.0, 1.0);
-        renderer.draw_quad(&quad);
+        let quad = Quad::new(self.transform.position, self.size, 0.0);
+        renderer.draw_quad_textured(&quad, self.texture, Default::default());
     }
 }
 
@@ -109,11 +113,14 @@ struct Brick {
 }
 
 pub struct BricksManager {
-    bricks: Vec<Brick>
+    bricks: Vec<Brick>,
+
+    solid_brick_texture: AssetHandle<Texture2D>,
+    brick_texture: AssetHandle<Texture2D>,
 }
 
 impl BricksManager {
-    pub fn new(level_data: LevelData, lvl_width: f32, lvl_height: f32) -> Self {
+    pub fn new(level_data: LevelData, lvl_width: f32, lvl_height: f32, solid_brick_texture: AssetHandle<Texture2D>, brick_texture: AssetHandle<Texture2D>) -> Self {
         let brick_width = lvl_width / level_data.bricks_cols as f32;
         let brick_height = lvl_height / level_data.bricks_rows as f32;
 
@@ -141,7 +148,9 @@ impl BricksManager {
         }
 
         Self {
-            bricks
+            bricks,
+            solid_brick_texture,
+            brick_texture
         }
     }
 
@@ -159,7 +168,16 @@ impl BricksManager {
 
         self.bricks.iter()
         .filter(|brick| !brick.destroyed)
-        .for_each(|brick| renderer.draw_quad(&brick.quad));
+        .for_each(|brick| {
+            let texture = if brick.is_solid {
+                self.solid_brick_texture
+            }
+            else {
+                self.brick_texture
+            };
+
+            renderer.draw_quad_textured(&brick.quad, texture, Default::default());
+        });
     }
 
     pub fn check_collisions(&mut self, ball: &Ball) -> Vec<HitInfo> {

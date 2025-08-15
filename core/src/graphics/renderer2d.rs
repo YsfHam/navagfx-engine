@@ -2,7 +2,7 @@ use std::{cell::{Cell, RefCell}, collections::HashMap};
 
 use wgpu::{include_wgsl, util::DeviceExt};
 
-use crate::{assets::{texture::{Texture2D, Texture2DCoordinates}, AssetHandle, AssetsManagerRef}, graphics::{camera::{Camera2D, CameraUniform}, shapes::Quad, GraphicsContext}};
+use crate::{application::GraphicsContextRef, assets::{texture::{Texture2D, Texture2DCoordinates}, AssetHandle, AssetsManagerRef}, graphics::{camera::{Camera2D, CameraUniform}, shapes::Quad, GraphicsContext}};
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Zeroable, bytemuck::Pod)]
@@ -126,6 +126,7 @@ impl QuadsInstanceDataBuffer {
 pub struct Renderer2D {
     render_pipeline: wgpu::RenderPipeline,
     assets_manager: AssetsManagerRef,
+    context: GraphicsContextRef<'static>,
     clear_color: wgpu::Color,
 
     vertex_buffer: wgpu::Buffer,
@@ -136,7 +137,7 @@ pub struct Renderer2D {
     camera_bind_group_layout: wgpu::BindGroupLayout,
     
     white_texture: AssetHandle<Texture2D>,
-    quads_instances: HashMap<AssetHandle<Texture2D>, QuadsInstanceDataBuffer>,
+    quads_instances: HashMap<(AssetHandle<Texture2D>, i32), QuadsInstanceDataBuffer>,
 }
 
 
@@ -144,13 +145,17 @@ impl Renderer2D {
 
     const MAX_QUAD: usize = 1_000_00;
 
-    pub fn new(context: &GraphicsContext, assets_manager: AssetsManagerRef) -> Self {
-        let shader = context.device
+    pub fn new(context: GraphicsContextRef<'static>, assets_manager: AssetsManagerRef) -> Self {
+        let context_lock = context.lock().unwrap();
+
+        let shader = context_lock.device
                 .create_shader_module(include_wgsl!("../../assets/shaders/shader_quad.wgsl"));
 
 
+        let vertex_buffer = Self::create_vertex_buffer(&context_lock);
+        let index_buffer = Self::create_index_buffer(&context_lock);
         
-        let camera_bind_group_layout = context.device
+        let camera_bind_group_layout = context_lock.device
                 .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                     label: Some("Renderer2D bind group layout"),
                     entries: &[
@@ -167,16 +172,16 @@ impl Renderer2D {
                     ],
                 });
 
-        let render_pipeline_layout = context.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        let render_pipeline_layout = context_lock.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Renderer2D pipeline layout"),
             bind_group_layouts: &[
                 &camera_bind_group_layout,
-                &Texture2D::create_bind_group_layout(context)
+                &Texture2D::create_bind_group_layout(&context_lock)
             ],
             push_constant_ranges: &[],
         });
 
-        let render_pipeline = context.device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        let render_pipeline = context_lock.device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("Render2D pipeline"),
             layout: Some(&render_pipeline_layout),
             vertex: wgpu::VertexState {
@@ -210,7 +215,7 @@ impl Renderer2D {
                 entry_point: Some("fs_main"),
                 compilation_options: Default::default(),
                 targets: &[Some(wgpu::ColorTargetState {
-                    format: context.config.format,
+                    format: context_lock.config.format,
                     blend: Some(wgpu::BlendState::ALPHA_BLENDING),
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
@@ -218,7 +223,7 @@ impl Renderer2D {
         });
 
 
-        let camera_buffer = context.device.create_buffer(&wgpu::BufferDescriptor {
+        let camera_buffer = context_lock.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Renderer2D camera buffer"),
             size: std::mem::size_of::<CameraUniform>() as wgpu::BufferAddress,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
@@ -227,15 +232,20 @@ impl Renderer2D {
 
         let mut assets_mgr_lock = assets_manager.lock().unwrap();
         let white_texture = assets_mgr_lock.store_asset(
-            Texture2D::from_memory(context, "dymm", &[255, 255, 255, 255], 1, 1)
-        );
+            Texture2D::from_memory(&context_lock, "dymm", &[255, 255, 255, 255], 1, 1)
+        )
+        .unwrap();
         drop(assets_mgr_lock);
+        drop(context_lock);
+
+
 
         Self {
             render_pipeline,
             clear_color: wgpu::Color {r: 0.1, g: 0.1, b: 0.2, a: 1.0},
-            vertex_buffer: Self::create_vertex_buffer(context),
-            index_buffer: Self::create_index_buffer(context),
+            vertex_buffer,
+            index_buffer,
+            context,
 
             camera_buffer,
             camera_uniform: None,
@@ -264,7 +274,7 @@ impl Renderer2D {
         let quads = 
                 self
                 .quads_instances
-                .entry(texture_handle)
+                .entry((texture_handle, quad.z_index))
                 .or_insert_with(|| QuadsInstanceDataBuffer::new(Self::MAX_QUAD))
                 ;
 
@@ -276,7 +286,9 @@ impl Renderer2D {
         });
     }
 
-    pub fn submit(&self, context: &GraphicsContext) -> Result<(), wgpu::SurfaceError> {
+    pub fn submit(&self) -> Result<(), wgpu::SurfaceError> {
+        let context = self.context.lock().unwrap();
+
         let output = context.surface.get_current_texture()?;
         let view = output.texture.create_view(&Default::default());
 
@@ -285,9 +297,10 @@ impl Renderer2D {
         });
 
 
-        self.start_render_pass(context, &mut encoder, &view);
+        self.start_render_pass(&context, &mut encoder, &view);
 
         context.queue.submit(std::iter::once(encoder.finish()));
+        drop(context);
         output.present();
         Ok(())
     }
@@ -327,8 +340,10 @@ impl Renderer2D {
     fn render_quads(&self, context: &GraphicsContext, render_pass: &mut wgpu::RenderPass) {
         let lock = self.assets_manager.lock().unwrap(); 
 
-        for (handle, quads) in &self.quads_instances {
+        let mut entries = self.quads_instances.iter().collect::<Vec<_>>();
+        entries.sort_by_key(|((_, z), _)| z);
 
+        for ((handle, _), quads) in &entries {
             let texture= lock.get_asset(*handle);
 
             render_pass.set_bind_group(1, &texture.bind_group, &[]);
