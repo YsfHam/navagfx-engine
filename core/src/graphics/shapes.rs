@@ -15,18 +15,12 @@ pub struct Quad {
 
 impl Quad {
 
-    pub fn new(position: glam::Vec2, size: glam::Vec2, rotation: f32) -> Self {
-        let transform = Self::compute_transform(position, size, rotation);
+    pub fn with_position_and_size(position: glam::Vec2, size: glam::Vec2) -> Self {
+        Self::new(position, size, 0.0)
+    }
 
-        Self {
-            position,
-            size,
-            rotation,
-            transform: Cell::new(transform),
-            color: glam::vec4(1.0, 1.0, 1.0, 1.0),
-            transform_needs_update: false,
-            z_index: 0,
-        }
+    pub fn with_size(size: glam::Vec2) -> Self {
+        Self::with_position_and_size(glam::Vec2::ZERO, size)
     }
 
     pub fn set_position(&mut self, position: glam::Vec2) {
@@ -67,6 +61,21 @@ impl Quad {
         }
         self.transform.get()
     }
+
+    fn new(position: glam::Vec2, size: glam::Vec2, rotation: f32) -> Self {
+        let transform = Self::compute_transform(position, size, rotation);
+
+        Self {
+            position,
+            size,
+            rotation,
+            transform: Cell::new(transform),
+            color: glam::vec4(1.0, 1.0, 1.0, 1.0),
+            transform_needs_update: false,
+            z_index: 0,
+        }
+    }
+
 
     fn compute_transform(position: glam::Vec2, size: glam::Vec2, rotation: f32) -> glam::Mat4 {
         let rotation_quat = glam::Quat::from_rotation_z(rotation.to_radians());

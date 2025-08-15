@@ -142,17 +142,9 @@ impl GameState {
     pub fn draw(&mut self, renderer: &mut Renderer2D) {
 
         renderer.begin(Color::BLACK, &self.camera);
-
-        let mut quad = Quad::new(
-            glam::vec2(0.0, 0.0),
-            glam::vec2(self.window_width, self.window_height),
-            0.0
-        );
-
-        quad.z_index = -100;
-
-        renderer.draw_quad_textured( &quad, self.background_texture, Default::default());
         
+        self.draw_background(renderer);
+
         self.ball.render(renderer);
         
         self.bricks_mgr.draw(renderer);
@@ -188,6 +180,17 @@ impl GameState {
         }
 
         ApplicationSignal::Continue
+    }
+
+    fn draw_background(&self, renderer: &mut Renderer2D) {
+        let mut quad = Quad::with_position_and_size(
+            glam::vec2(0.0, 0.0),
+            glam::vec2(self.window_width, self.window_height),
+        );
+
+        quad.z_index = -100;
+
+        renderer.draw_quad_textured( &quad, self.background_texture, Default::default());
     }
 
     fn keep_paddle_inside_screen(&mut self) {
@@ -228,16 +231,25 @@ impl GameState {
         let hit_infos = self.bricks_mgr.check_collisions(&self.ball);
 
         let velocity = self.ball.transform.velocity;
-        for hit_info in hit_infos {
+        
+        let (new_vel_opt, pos_offset) = hit_infos.iter()
+        .fold((None, glam::Vec2::ZERO), |(mut vel_acc, mut pos_acc), hit_info| {
+
             let normal = hit_info.hit_side_normal;
             let reflection_vel = velocity - 2.0 * velocity.dot(normal) * normal;
 
-            self.ball.transform.velocity = reflection_vel;
+            let vel = vel_acc.get_or_insert(glam::Vec2::ZERO);
+            *vel += reflection_vel;
 
             let penetration_length = self.ball.radius - hit_info.circle_to_hit_point.length();
-            self.ball.transform.position += normal * penetration_length;
+            pos_acc += normal * penetration_length;
 
-        }
+            (vel_acc, pos_acc)
+        });
+
+        let new_vel = new_vel_opt.unwrap_or(velocity);
+        self.ball.transform.velocity = velocity.length() * new_vel.normalize();
+        self.ball.transform.position += pos_offset;
     }
 
     fn resolve_paddle_collisions(&mut self) {

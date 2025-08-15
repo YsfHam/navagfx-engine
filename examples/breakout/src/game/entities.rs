@@ -47,7 +47,7 @@ impl Ball {
         let quad_half_size = glam::vec2(self.radius, self.radius);
         let quad_position = self.transform.position - quad_half_size;
 
-        let quad = Quad::new(quad_position, quad_half_size * 2.0, 0.0);
+        let quad = Quad::with_position_and_size(quad_position, quad_half_size * 2.0);
         renderer.draw_quad_textured(&quad, self.texture, Default::default());
     }
 }
@@ -84,7 +84,7 @@ impl Paddle {
 
     pub fn render(&self, renderer: &mut Renderer2D) {
 
-        let quad = Quad::new(self.transform.position, self.size, 0.0);
+        let quad = Quad::with_position_and_size(self.transform.position, self.size);
         renderer.draw_quad_textured(&quad, self.texture, Default::default());
     }
 }
@@ -137,7 +137,7 @@ impl BricksManager {
 
                 let pos = glam::vec2(x as f32 * brick_width, y as f32 * brick_height);
                 let size = glam::vec2(brick_width, brick_height);
-                let mut quad = Quad::new(pos, size, 0.0);
+                let mut quad = Quad::with_position_and_size(pos, size);
                 quad.color = color;
                 bricks.push(Brick {
                     quad,
