@@ -146,7 +146,7 @@ impl Renderer2D {
     const MAX_QUAD: usize = 1_000_00;
 
     pub fn new(context: GraphicsContextRef<'static>, assets_manager: AssetsManagerRef) -> Self {
-        let context_lock = context.lock().unwrap();
+        let context_lock = context.read().unwrap();
 
         let shader = context_lock.device
                 .create_shader_module(include_wgsl!("../../assets/shaders/shader_quad.wgsl"));
@@ -230,12 +230,15 @@ impl Renderer2D {
             mapped_at_creation: false,
         });
 
-        let mut assets_mgr_lock = assets_manager.lock().unwrap();
-        let white_texture = assets_mgr_lock.store_asset(
-            Texture2D::from_memory(&context_lock, "dymm", &[255, 255, 255, 255], 1, 1)
-        )
-        .unwrap();
-        drop(assets_mgr_lock);
+        //let mut assets_mgr_lock = 
+        let white_texture = assets_manager
+            .write()
+            .unwrap()
+            .store_asset(
+                Texture2D::from_memory(&context_lock, "dymm", &[255, 255, 255, 255], 1, 1)
+            )
+            .unwrap();
+
         drop(context_lock);
 
 
@@ -287,7 +290,7 @@ impl Renderer2D {
     }
 
     pub fn submit(&self) -> Result<(), wgpu::SurfaceError> {
-        let context = self.context.lock().unwrap();
+        let context = self.context.read().unwrap();
 
         let output = context.surface.get_current_texture()?;
         let view = output.texture.create_view(&Default::default());
@@ -337,13 +340,14 @@ impl Renderer2D {
 
     }
 
-    fn render_quads(&self, context: &GraphicsContext, render_pass: &mut wgpu::RenderPass) {
-        let lock = self.assets_manager.lock().unwrap(); 
+    fn render_quads(&self, context: &GraphicsContext, render_pass: &mut wgpu::RenderPass) { 
 
         let mut entries = self.quads_instances.iter().collect::<Vec<_>>();
         entries.sort_by_key(|((_, z), _)| z);
 
         for ((handle, _), quads) in &entries {
+
+            let lock = self.assets_manager.read().unwrap();
             let texture= lock.get_asset(*handle);
 
             render_pass.set_bind_group(1, &texture.bind_group, &[]);

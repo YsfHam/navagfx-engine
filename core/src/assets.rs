@@ -1,4 +1,4 @@
-use std::{any::{Any, TypeId}, collections::HashMap, fmt::Debug, hash::Hash, marker::PhantomData, sync::{Arc, Mutex}};
+use std::{any::{Any, TypeId}, collections::HashMap, fmt::Debug, hash::Hash, marker::PhantomData, sync::{Arc, RwLock}};
 
 
 pub mod texture;
@@ -25,7 +25,7 @@ pub trait AssetHasDefaultLoader<Src> {
     type Loader: AssetsLoader<Src, TAsset = Self>;
 }
 
-pub type AssetsManagerRef = Arc<Mutex<AssetsManager>>;
+pub type AssetsManagerRef = Arc<RwLock<AssetsManager>>;
 
 pub trait AssetsLoader<Src> {
     type TAsset: Asset;
@@ -111,6 +111,18 @@ impl AssetsManager {
         self.load_asset_with::<TAsset, TAsset::Loader, Src>(source)
     }
 
+    pub async fn load_asset_async<TAsset, Src>(&mut self, source: Src) -> 
+    Result<
+        AssetHandle<TAsset>,
+        <TAsset::Loader as AssetsLoader<Src>>::Error
+    >
+    where
+        TAsset: Asset + AssetHasDefaultLoader<Src> + 'static,
+        TAsset::Loader: 'static
+    {
+        self.load_asset::<TAsset, Src>(source)
+    }
+
     pub fn load_asset_with<TAsset: 'static + Asset, Loader, Src>(&mut self, source: Src) -> 
         Result<AssetHandle<TAsset>, Loader::Error> 
     where
@@ -121,7 +133,15 @@ impl AssetsManager {
 
 
         self.get_storage_mut()
-        .map(|storage| storage.store_asset(asset)   )
+        .map(|storage| storage.store_asset(asset))
+    }
+
+    pub async fn load_asset_with_async<TAsset: 'static + Asset, Loader, Src>(&mut self, source: Src) -> 
+        Result<AssetHandle<TAsset>, Loader::Error> 
+    where
+        Loader: AssetsLoader<Src, TAsset = TAsset> + 'static
+    {
+        self.load_asset_with::<TAsset, Loader, Src>(source)
     }
 
 

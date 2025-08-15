@@ -23,7 +23,7 @@ impl GameApp {
 impl ApplicationHandler for GameApp {
     fn init(context: GraphicsContextRef<'static>, assets_manager: AssetsManagerRef) -> Self {
         
-        let context_lock = context.lock().unwrap();
+        let context_lock = context.read().unwrap();
         let width = context_lock.config.width;
         let height = context_lock.config.height;
         drop(context_lock);

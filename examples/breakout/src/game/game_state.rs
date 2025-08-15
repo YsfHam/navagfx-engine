@@ -84,7 +84,7 @@ impl GameState {
 
         let level_data = LevelData::load_from_file("assets/levels/one.lvl");
 
-        let mut assets_manager = assets_manager.lock().unwrap();
+        let mut assets_manager = assets_manager.write().unwrap();
         let ball_texture = assets_manager.load_asset::<Texture2D, _>("assets/textures/awesomeface.png").unwrap();
         let background_texture = assets_manager.load_asset::<Texture2D, _>("assets/textures/background.jpg").unwrap();
 

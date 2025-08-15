@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 
 use winit::{dpi::LogicalSize, event::{KeyEvent, WindowEvent}, event_loop::{ActiveEventLoop, EventLoop}, keyboard::{Key, PhysicalKey}, window::{Window, WindowAttributes, WindowButtons}};
 
@@ -8,7 +8,7 @@ pub mod event;
 pub mod input;
 
 
-pub type GraphicsContextRef<'a> = Arc<Mutex<GraphicsContext<'a>>>;
+pub type GraphicsContextRef<'a> = Arc<RwLock<GraphicsContext<'a>>>;
 
 #[derive(Default, Clone)]
 pub struct ApplicationSettings<'a> {
@@ -130,7 +130,7 @@ impl<'a, Handler: ApplicationHandler> winit::application::ApplicationHandler<App
                 match handler.draw() {
                     Ok(()) => (),
                     Err(wgpu::SurfaceError::Outdated | wgpu::SurfaceError::Lost) => {
-                        let mut context = data.context.lock().unwrap();
+                        let mut context = data.context.write().unwrap();
                         let width = context.config.width;
                         let height = context.config.height;
                         context.resize_surface(width, height);
@@ -145,7 +145,7 @@ impl<'a, Handler: ApplicationHandler> winit::application::ApplicationHandler<App
             }
 
             WindowEvent::Resized(size) => {
-                let mut context = data.context.lock().unwrap();
+                let mut context = data.context.write().unwrap();
                 context.resize_surface(size.width, size.height);
 
                 Some(handler.handle_event(ApplicationEvent::Resized { width: size.width, height: size.height }))
@@ -213,7 +213,7 @@ impl AppData {
         let size = window.inner_size();
 
         let context = Arc::new(
-            Mutex::new(
+            RwLock::new(
             GraphicsContext
             ::new(
                 window.clone(),
@@ -227,7 +227,7 @@ impl AppData {
         Self {
             window,
             context,
-            assets_manager: Arc::new(Mutex::new(assets_manager))
+            assets_manager: Arc::new(RwLock::new(assets_manager))
         }
     }
 
