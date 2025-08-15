@@ -77,12 +77,21 @@ pub struct GameState {
 
     background_texture: AssetHandle<Texture2D>,
     background_quad: Quad,
+
+    levels: Vec<LevelData>,
+    current_level: usize,
 }
 
 impl GameState {
     pub fn new(window_width: f32, window_height: f32, assets_manager: AssetsManagerRef) -> Self {
 
-        let level_data = LevelData::load_from_file("assets/levels/one.lvl");
+        let levels = ["one", "two", "three"]
+            .iter()
+            .map(|lvl| format!("assets/levels/{lvl}.lvl"))
+            .map(|file| LevelData::load_from_file(&file))
+            .collect::<Vec<_>>()
+        ;
+
 
         let mut assets_manager = assets_manager.write().unwrap();
         let ball_texture = assets_manager.load_asset::<Texture2D, _>("assets/textures/awesomeface.png").unwrap();
@@ -93,6 +102,9 @@ impl GameState {
 
         let paddle_texture = assets_manager.load_asset::<Texture2D, _>("assets/textures/paddle.png").unwrap();
 
+
+        let mut bricks_mgr = BricksManager::new(solid_brick_texture, brick_texture);
+        bricks_mgr.load_level(&levels[2], window_width, window_height * 0.5);
 
         let paddle_pos = glam::vec2(
             (window_width - PADDLE_SIZE.x) * 0.5,
@@ -114,11 +126,13 @@ impl GameState {
             ball: Ball::new(ball_position, BALL_VELOCITY, BALL_RADIUS, ball_texture),
             paddle: Paddle::new(paddle_pos, PLAYER_VELOCITY, PADDLE_SIZE, paddle_texture),
             ball_idle: true,
-            bricks_mgr: BricksManager::new(level_data, window_width, window_height * 0.5, solid_brick_texture, brick_texture),
+            bricks_mgr,
             window_height,
             window_width,
             background_texture,
-            background_quad
+            background_quad,
+            levels,
+            current_level: 0
         }
     }
 
@@ -142,7 +156,15 @@ impl GameState {
 
 
         if self.ball.transform.position.y - self.ball.radius > self.window_height {
-            return ApplicationSignal::Exit;
+            self.reset_level();
+        }
+        else if !self.bricks_mgr.has_bricks() {
+            self.current_level += 1;
+            if self.current_level == self.levels.len() {
+                return ApplicationSignal::Exit;
+            }
+
+            self.bricks_mgr.load_level(&self.levels[self.current_level], self.window_width, self.window_height * 0.5);
         }
 
         ApplicationSignal::Continue
@@ -284,4 +306,9 @@ impl GameState {
         self.ball.transform.position.y -= penetration;
     }
 
+
+    fn reset_level(&mut self) {
+        self.bricks_mgr.reset();
+        self.ball_idle = true;
+    }
 }

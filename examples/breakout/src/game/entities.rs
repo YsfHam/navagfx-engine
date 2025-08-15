@@ -120,11 +120,29 @@ pub struct BricksManager {
 }
 
 impl BricksManager {
-    pub fn new(level_data: LevelData, lvl_width: f32, lvl_height: f32, solid_brick_texture: AssetHandle<Texture2D>, brick_texture: AssetHandle<Texture2D>) -> Self {
+    pub fn new(solid_brick_texture: AssetHandle<Texture2D>, brick_texture: AssetHandle<Texture2D>) -> Self {
+        Self {
+            bricks: Vec::new(),
+            solid_brick_texture,
+            brick_texture
+        }
+    }
+
+    fn get_brick_color(id: u32) -> glam::Vec4 {
+        match id {
+            2 => glam::vec4(0.2, 0.6, 1.0, 1.0),
+            3 => glam::vec4(0.0, 0.7, 0.0, 1.0),
+            4 => glam::vec4(0.8, 0.8, 0.4, 1.0),
+            5 => glam::vec4(1.0, 0.5, 0.0, 1.0),
+            _ => panic!("Unknow brick id {id}")
+        }
+    }
+
+    pub fn load_level(&mut self, level_data: &LevelData, lvl_width: f32, lvl_height: f32) {
         let brick_width = lvl_width / level_data.bricks_cols as f32;
         let brick_height = lvl_height / level_data.bricks_rows as f32;
-
-        let mut bricks = Vec::with_capacity(level_data.bricks_types.len());
+        
+        self.bricks.clear();
 
         for y in 0..level_data.bricks_rows {
             for x in 0..level_data.bricks_cols {
@@ -139,29 +157,25 @@ impl BricksManager {
                 let size = glam::vec2(brick_width, brick_height);
                 let mut quad = Quad::with_position_and_size(pos, size);
                 quad.color = color;
-                bricks.push(Brick {
+                self.bricks.push(Brick {
                     quad,
                     is_solid,
                     destroyed: false,
                 })
             }
         }
-
-        Self {
-            bricks,
-            solid_brick_texture,
-            brick_texture
-        }
     }
 
-    fn get_brick_color(id: u32) -> glam::Vec4 {
-        match id {
-            2 => glam::vec4(0.2, 0.6, 1.0, 1.0),
-            3 => glam::vec4(0.0, 0.7, 0.0, 1.0),
-            4 => glam::vec4(0.8, 0.8, 0.4, 1.0),
-            5 => glam::vec4(1.0, 0.5, 0.0, 1.0),
-            _ => panic!("Unknow brick id {id}")
-        }
+    pub fn reset(&mut self) {
+        self.bricks.
+        iter_mut()
+        .for_each(|brick| brick.destroyed = false);
+    }
+
+    pub fn has_bricks(&self) -> bool {
+        self.bricks
+        .iter()
+        .any(|brick| !brick.destroyed)
     }
 
     pub fn draw(&self, renderer: &mut Renderer2D) {
