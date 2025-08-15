@@ -76,6 +76,7 @@ pub struct GameState {
     window_height: f32,
 
     background_texture: AssetHandle<Texture2D>,
+    background_quad: Quad,
 }
 
 impl GameState {
@@ -98,6 +99,13 @@ impl GameState {
             window_height - PADDLE_SIZE.y
         );
 
+        let mut background_quad = Quad::with_position_and_size(
+            glam::vec2(0.0, 0.0),
+            glam::vec2(window_width, window_height),
+        );
+
+        background_quad.z_index = -100;
+
         
         let paddle_surface_center = get_center_over_rect(paddle_pos, PADDLE_SIZE);
         let ball_position = glam::vec2(paddle_surface_center.x, paddle_surface_center.y - BALL_RADIUS);
@@ -109,7 +117,8 @@ impl GameState {
             bricks_mgr: BricksManager::new(level_data, window_width, window_height * 0.5, solid_brick_texture, brick_texture),
             window_height,
             window_width,
-            background_texture
+            background_texture,
+            background_quad
         }
     }
 
@@ -156,7 +165,13 @@ impl GameState {
 
         match event {
             ApplicationEvent::Resized { width, height } 
-                => self.camera = Camera2D::new(width as f32, height as f32),
+                => {
+                    self.camera = Camera2D::new(width as f32, height as f32);
+                    self.window_height = height as f32;
+                    self.window_width = width as f32;
+
+                    self.background_quad.set_size(glam::vec2(self.window_width, self.window_height));
+                }
         }
         
         ApplicationSignal::Continue
@@ -183,14 +198,8 @@ impl GameState {
     }
 
     fn draw_background(&self, renderer: &mut Renderer2D) {
-        let mut quad = Quad::with_position_and_size(
-            glam::vec2(0.0, 0.0),
-            glam::vec2(self.window_width, self.window_height),
-        );
 
-        quad.z_index = -100;
-
-        renderer.draw_quad_textured( &quad, self.background_texture, Default::default());
+        renderer.draw_quad_textured(&self.background_quad, self.background_texture, Default::default());
     }
 
     fn keep_paddle_inside_screen(&mut self) {
@@ -231,15 +240,14 @@ impl GameState {
         let hit_infos = self.bricks_mgr.check_collisions(&self.ball);
 
         let velocity = self.ball.transform.velocity;
-        
-        let (new_vel_opt, pos_offset) = hit_infos.iter()
-        .fold((None, glam::Vec2::ZERO), |(mut vel_acc, mut pos_acc), hit_info| {
+
+        let (new_vel, pos_offset) = hit_infos.iter()
+        .fold((glam::Vec2::ZERO, glam::Vec2::ZERO), |(mut vel_acc, mut pos_acc), hit_info| {
 
             let normal = hit_info.hit_side_normal;
             let reflection_vel = velocity - 2.0 * velocity.dot(normal) * normal;
 
-            let vel = vel_acc.get_or_insert(glam::Vec2::ZERO);
-            *vel += reflection_vel;
+            vel_acc += reflection_vel;
 
             let penetration_length = self.ball.radius - hit_info.circle_to_hit_point.length();
             pos_acc += normal * penetration_length;
@@ -247,8 +255,7 @@ impl GameState {
             (vel_acc, pos_acc)
         });
 
-        let new_vel = new_vel_opt.unwrap_or(velocity);
-        self.ball.transform.velocity = velocity.length() * new_vel.normalize();
+        self.ball.transform.velocity = velocity.length() * new_vel.normalize_or(velocity.normalize());
         self.ball.transform.position += pos_offset;
     }
 
